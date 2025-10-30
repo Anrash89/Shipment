@@ -1,936 +1,325 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WB/OZON Трекер Поставок</title>
-    <!-- Подключение Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Подключение шрифта Inter -->
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-
-        /* Цветовая палитра для маркетплейсов и статусов */
-        .marketplace-wb { border-left: 8px solid #cc005f; }
-        .marketplace-ozon { border-left: 8px solid #005bff; }
-
-        .status-editing { background-color: #ffffff; border-color: #94a3b8; } /* Белый - Редактура */
-        .status-collected { background-color: #fef08a; border-color: #eab308; } /* Желтый - Собрано */
-        .status-in_transit { background-color: #bbf7d0; border-color: #16a34a; } /* Нежно-зеленый - В пути */
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Поставки — WB/OZON</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .card{border-width:2px}
+    .mp-wb{border-color:#7a5cff}
+    .mp-ozon{border-color:#0969da}
+    .stage-process{background:#ffffff}
+    .stage-packed{background:#fff7d6}
+    .stage-inroute{background:#eaffea}
+  </style>
 </head>
-<body class="bg-gray-50 p-4 md:p-8 min-h-screen">
+<body class="bg-slate-50 text-slate-800">
+  <div class="max-w-6xl mx-auto p-4">
+    <h1 class="text-2xl font-bold mb-4">Поставки — WB / OZON</h1>
 
-    <!-- Заголовок и навигация -->
-    <div class="max-w-7xl mx-auto mb-8">
-        <h1 class="text-3xl font-bold text-gray-800 mb-2">Менеджер Отгрузок WB/OZON</h1>
-        <p class="text-sm text-gray-500">Пользователь ID: <span id="user-id" class="font-mono text-xs bg-gray-200 p-1 rounded">Загрузка...</span></p>
-
-        <!-- Tabs Navigation -->
-        <div class="flex border-b border-gray-300 mt-6">
-            <button id="tab-shipments" onclick="showTab('shipments')" class="py-2 px-4 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 hover:text-indigo-800 transition duration-150">
-                Поставки
-            </button>
-            <button id="tab-libraries" onclick="showTab('libraries')" class="py-2 px-4 text-sm font-semibold border-b-2 border-transparent text-gray-600 hover:text-gray-800 transition duration-150">
-                Справочники (Библиотеки)
-            </button>
-        </div>
-    </div>
-    
-    <!-- КОНТЕЙНЕР "ПОСТАВКИ" -->
-    <div id="shipments-container" class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        <!-- Колонка Формы -->
-        <div class="lg:col-span-1">
-            <div class="bg-white p-6 shadow-xl rounded-xl sticky top-8" id="form-container">
-                <h2 id="form-title" class="text-xl font-semibold mb-4 text-gray-700">Создать Новую Поставку</h2>
-                <form id="shipment-form" class="space-y-4">
-                    <input type="hidden" id="shipment-id">
-
-                    <!-- Выбор Маркетплейса -->
-                    <div class="market-select flex gap-2">
-                        <label class="font-medium text-gray-700 w-full">
-                            <input type="radio" name="marketplace" value="WB" required class="hidden" onchange="updateFormBorder(event)">
-                            <div class="p-3 text-center rounded-lg border-2 cursor-pointer transition duration-150 border-purple-300 bg-purple-50 hover:bg-purple-100 peer-checked:border-purple-600 peer-checked:bg-purple-200">
-                                Wildberries
-                            </div>
-                        </label>
-                        <label class="font-medium text-gray-700 w-full">
-                            <input type="radio" name="marketplace" value="OZON" required class="hidden" onchange="updateFormBorder(event)">
-                            <div class="p-3 text-center rounded-lg border-2 cursor-pointer transition duration-150 border-blue-300 bg-blue-50 hover:bg-blue-100 peer-checked:border-blue-600 peer-checked:bg-blue-200">
-                                OZON
-                            </div>
-                        </label>
-                    </div>
-
-                    <!-- Склад Получатель (Город приемки) -->
-                    <div class="form-group">
-                        <label for="warehouse" class="block text-sm font-medium text-gray-700 mb-1">Склад Получатель (Город)</label>
-                        <select id="warehouse" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition">
-                            <option value="" disabled selected>Выберите склад...</option>
-                            <!-- Опции будут добавлены скриптом из Firestore -->
-                        </select>
-                    </div>
-
-                    <!-- Артикул (Из справочника) -->
-                    <div class="form-group">
-                        <label for="article" class="block text-sm font-medium text-gray-700 mb-1">Артикул</label>
-                        <select id="article" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" onchange="updateBarcode()">
-                            <option value="" disabled selected>Выберите артикул...</option>
-                            <!-- Опции будут добавлены скриптом из Firestore -->
-                        </select>
-                    </div>
-
-                    <!-- Баркод (Автозаполнение) -->
-                    <div class="form-group">
-                        <label for="barcode" class="block text-sm font-medium text-gray-700 mb-1">Баркод Товара (Авто)</label>
-                        <input type="text" id="barcode" readonly class="w-full p-3 border border-gray-200 bg-gray-100 rounded-lg cursor-not-allowed text-gray-600" placeholder="Баркод появится после выбора артикула">
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <!-- Штук в коробке -->
-                        <div class="form-group">
-                            <label for="unitsPerBox" class="block text-sm font-medium text-gray-700 mb-1">Штук в коробке</label>
-                            <input type="number" id="unitsPerBox" required min="1" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" value="1">
-                        </div>
-                        <!-- Количество коробок -->
-                        <div class="form-group">
-                            <label for="boxCount" class="block text-sm font-medium text-gray-700 mb-1">Количество коробок</label>
-                            <input type="number" id="boxCount" required min="1" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" value="1" oninput="generateBoxBarcodes()">
-                        </div>
-                    </div>
-
-                    <!-- ШК КОРОБА (Начальный код) -->
-                    <div class="form-group">
-                        <label for="initialBoxCode" class="block text-sm font-medium text-gray-700 mb-1">Начальный цифровой ШК КОРОБА (WB_...)</label>
-                        <div class="flex">
-                            <span class="p-3 bg-gray-200 border border-gray-300 rounded-l-lg font-mono text-sm select-none">WB_</span>
-                            <input type="number" id="initialBoxCode" required class="w-full p-3 border border-gray-300 rounded-r-lg focus:ring-purple-500 focus:border-purple-500 transition" oninput="generateBoxBarcodes()">
-                        </div>
-                        <p id="barcode-preview" class="text-xs text-gray-500 mt-1 italic hidden">Будет сгенерировано N кодов.</p>
-                    </div>
-
-                    <!-- ШК ПОСТАВКИ -->
-                    <div class="form-group">
-                        <label for="supplyBarcode" class="block text-sm font-medium text-gray-700 mb-1">ШК Поставки (WB-GI-...)</label>
-                        <div class="flex">
-                            <span class="p-3 bg-gray-200 border border-gray-300 rounded-l-lg font-mono text-sm select-none">WB-GI-</span>
-                            <input type="text" id="supplyBarcode" required class="w-full p-3 border border-gray-300 rounded-r-lg focus:ring-purple-500 focus:border-purple-500 transition" placeholder="Введите окончание кода">
-                        </div>
-                    </div>
-
-                    <!-- ТТН, Вес, Объем -->
-                    <div class="form-group">
-                        <label for="ttnNumber" class="block text-sm font-medium text-gray-700 mb-1">Номер ТТН от ТК</label>
-                        <input type="text" id="ttnNumber" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" placeholder="Номер транспортной накладной">
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="form-group">
-                            <label for="weight" class="block text-sm font-medium text-gray-700 mb-1">Вес груза (кг)</label>
-                            <input type="number" id="weight" step="0.01" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" value="0" min="0">
-                        </div>
-                        <div class="form-group">
-                            <label for="volume" class="block text-sm font-medium text-gray-700 mb-1">Объем (м³)</label>
-                            <input type="number" id="volume" step="0.001" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" value="0" min="0">
-                        </div>
-                    </div>
-
-
-                    <!-- Статус Поставки -->
-                    <div class="form-group">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Статус Поставки (Цвет карточки)</label>
-                        <div class="flex flex-wrap gap-4">
-                            <label class="flex items-center space-x-2">
-                                <input type="radio" name="status" value="editing" required class="form-radio h-4 w-4 text-gray-500 focus:ring-gray-400">
-                                <span class="bg-white border border-gray-400 p-2 rounded-lg shadow-sm text-sm">В Редактировании (Белый)</span>
-                            </label>
-                            <label class="flex items-center space-x-2">
-                                <input type="radio" name="status" value="collected" class="form-radio h-4 w-4 text-yellow-500 focus:ring-yellow-400">
-                                <span class="bg-yellow-100 border border-yellow-400 p-2 rounded-lg shadow-sm text-sm">Собрано (Желтый)</span>
-                            </label>
-                            <label class="flex items-center space-x-2">
-                                <input type="radio" name="status" value="in_transit" class="form-radio h-4 w-4 text-green-500 focus:ring-green-400">
-                                <span class="bg-green-100 border border-green-400 p-2 rounded-lg shadow-sm text-sm">В Пути (Зеленый)</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Кнопки формы -->
-                    <div class="flex gap-2 pt-4">
-                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow-md transition duration-200">
-                            Сохранить / Обновить Поставку
-                        </button>
-                        <button type="button" onclick="resetForm()" class="bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">
-                            Сброс
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Колонка Карточек Поставок -->
-        <div class="lg:col-span-2">
-            
-            <div id="filter-section" class="flex flex-col sm:flex-row gap-4 mb-4 p-4 bg-white shadow-lg rounded-xl">
-                <select id="filter-marketplace" class="p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition">
-                    <option value="">Все Маркетплейсы</option>
-                    <option value="WB">Wildberries</option>
-                    <option value="OZON">OZON</option>
-                </select>
-                <select id="filter-status" class="p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition">
-                    <option value="">Все Статусы</option>
-                    <option value="editing">В Редактировании (Белый)</option>
-                    <option value="collected">Собрано (Желтый)</option>
-                    <option value="in_transit">В Пути (Зеленый)</option>
-                </select>
-                <button onclick="applyFilters()" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-200">
-                    Применить Фильтры
-                </button>
-            </div>
-            
-            <h2 class="text-xl font-semibold mb-4 text-gray-700">Активные Поставки (<span id="shipment-count">0</span>)</h2>
-            <div id="shipment-list" class="space-y-4">
-                <!-- Карточки будут добавлены скриптом -->
-                <div id="loading-indicator" class="p-6 text-center text-gray-500">
-                    Загрузка данных...
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- КОНТЕЙНЕР "СПРАВОЧНИКИ" (Скрыт по умолчанию) -->
-    <div id="libraries-container" class="max-w-7xl mx-auto hidden grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        <!-- БЛОК УПРАВЛЕНИЯ СКЛАДАМИ -->
-        <div class="bg-white p-6 shadow-xl rounded-xl">
-            <h3 class="text-xl font-semibold mb-4 text-gray-700">Справочник Складов</h3>
-            <form id="warehouse-form" class="flex gap-2 mb-6">
-                <input type="text" id="warehouse-name-input" required placeholder="Название склада (напр., Казань)" class="flex-grow p-3 border border-gray-300 rounded-lg">
-                <button type="submit" class="bg-indigo-500 text-white px-4 py-3 rounded-lg hover:bg-indigo-600 transition">Добавить</button>
-            </form>
-            
-            <div id="warehouse-list" class="space-y-3">
-                <!-- Список складов из Firestore -->
-                <p class="text-gray-500 text-sm">Загрузка складов...</p>
-            </div>
-        </div>
-
-        <!-- БЛОК УПРАВЛЕНИЯ АРТИКУЛАМИ -->
-        <div class="bg-white p-6 shadow-xl rounded-xl">
-            <h3 class="text-xl font-semibold mb-4 text-gray-700">Справочник Артикулов и Баркодов</h3>
-            <form id="article-form" class="flex flex-col sm:flex-row gap-2 mb-6">
-                <input type="text" id="article-name-input" required placeholder="Артикул (напр., 1024-RED)" class="flex-grow p-3 border border-gray-300 rounded-lg">
-                <input type="text" id="article-barcode-input" required placeholder="Баркод (цифры)" class="flex-grow p-3 border border-gray-300 rounded-lg">
-                <button type="submit" class="bg-indigo-500 text-white px-4 py-3 rounded-lg hover:bg-indigo-600 transition">Добавить</button>
-            </form>
-
-            <div id="article-list" class="space-y-3">
-                <!-- Список артикулов из Firestore -->
-                <p class="text-gray-500 text-sm">Загрузка артикулов...</p>
-            </div>
-        </div>
+    <!-- Панель фильтров -->
+    <div class="grid md:grid-cols-4 gap-3 mb-4 items-end">
+      <div>
+        <label class="block text-sm mb-1">Фильтр по маркетплейсу</label>
+        <select id="f-market" class="w-full border rounded p-2">
+          <option value="">Все</option>
+          <option value="WB">WB</option>
+          <option value="OZON">OZON</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Фильтр по стадии</label>
+        <select id="f-stage" class="w-full border rounded p-2">
+          <option value="">Все</option>
+          <option value="В процессе">В процессе</option>
+          <option value="Собрано">Собрано</option>
+          <option value="В пути">В пути</option>
+        </select>
+      </div>
+      <div class="md:col-span-2">
+        <label class="block text-sm mb-1">Поиск (артикул/склад/ТТН)</label>
+        <input id="f-q" type="text" class="w-full border rounded p-2" placeholder="Начните ввод..." />
+      </div>
     </div>
 
-    <!-- Модальное окно подтверждения отправки -->
-    <div id="confirm-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm">
-            <h3 class="text-xl font-bold mb-4 text-gray-800">Подтвердите Отправку</h3>
-            <p class="mb-6 text-gray-600">Вы уверены, что хотите отметить эту поставку как "Отправленную"? Дата отправки будет зафиксирована.</p>
-            <div class="flex justify-end gap-3">
-                <button id="cancel-ship-btn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">Отмена</button>
-                <button id="confirm-ship-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold">Подтвердить и Отправить</button>
-            </div>
+    <!-- Форма создания/редактирования -->
+    <div class="bg-white rounded-xl shadow p-4 mb-6">
+      <h2 class="text-lg font-semibold mb-3">Создать / Редактировать поставку</h2>
+      <form id="ship-form" class="grid md:grid-cols-3 gap-3">
+        <input type="hidden" id="id" />
+        <div>
+          <label class="block text-sm mb-1">Маркетплейс</label>
+          <select id="marketplace" class="w-full border rounded p-2" required>
+            <option value="WB">WB</option>
+            <option value="OZON">OZON</option>
+          </select>
         </div>
+        <div>
+          <label class="block text-sm mb-1">Склад получатель</label>
+          <select id="warehouse" class="w-full border rounded p-2" required></select>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Стадия</label>
+          <select id="status" class="w-full border rounded p-2" required>
+            <option>В процессе</option>
+            <option>Собрано</option>
+            <option>В пути</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm mb-1">Артикул</label>
+          <input id="article" list="art-list" class="w-full border rounded p-2" placeholder="Выберите артикул" />
+          <datalist id="art-list"></datalist>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Баркод</label>
+          <input id="barcode" class="w-full border rounded p-2" placeholder="Автоподстановка по артикулу" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Ед. в коробке</label>
+          <input id="unitsPerBox" type="number" min="0" class="w-full border rounded p-2" />
+        </div>
+
+        <div>
+          <label class="block text-sm mb-1">Кол-во коробок</label>
+          <input id="boxes" type="number" min="0" class="w-full border rounded p-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Стартовый ШК короба (только цифры)</label>
+          <input id="boxStartNumeric" type="number" min="0" class="w-full border rounded p-2" placeholder="Напр.: 1460805995" />
+          <p class="text-xs text-slate-500 mt-1">Будут сгенерированы WB_XXXXXXX, WB_XXXXXXX+1 ... на N коробок</p>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">ШК поставки (WB-GI-...)</label>
+          <input id="supplyCode" class="w-full border rounded p-2" placeholder="WB-GI-..." />
+        </div>
+
+        <div>
+          <label class="block text-sm mb-1">Вес (кг)</label>
+          <input id="weight" type="number" step="0.001" class="w-full border rounded p-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Объём (м³)</label>
+          <input id="volume" type="number" step="0.0001" class="w-full border rounded p-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Номер ТТН (от ТК)</label>
+          <input id="ttn" class="w-full border rounded p-2" placeholder="Можно позже" />
+        </div>
+
+        <div class="md:col-span-3 flex gap-2 mt-2">
+          <button class="px-4 py-2 rounded bg-black text-white" type="submit">Сохранить</button>
+          <button id="resetBtn" class="px-4 py-2 rounded border" type="button">Очистить форму</button>
+        </div>
+      </form>
     </div>
 
-
-    <!-- Firebase Initialization -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, query, serverTimestamp, setLogLevel, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Глобальные переменные из среды Canvas
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        let app;
-        let db;
-        let auth;
-        let userId = null;
-        let shipments = [];
-        let warehouses = []; // Новая переменная для данных складов
-        let articles = [];   // Новая переменная для данных артикулов
-        let editingShipmentId = null;
-
-        // --- 1. ССЫЛКИ НА ЭЛЕМЕНТЫ DOM ---
-        const WAREHOUSE_SELECT = document.getElementById('warehouse');
-        const ARTICLE_SELECT = document.getElementById('article');
-        const BARCODE_INPUT = document.getElementById('barcode');
-        const FORM = document.getElementById('shipment-form');
-        const FORM_CONTAINER = document.getElementById('form-container');
-        const FORM_TITLE = document.getElementById('form-title');
-        const SHIPMENT_LIST = document.getElementById('shipment-list');
-        const USER_ID_SPAN = document.getElementById('user-id');
-        const LOADING_INDICATOR = document.getElementById('loading-indicator');
-        const CONFIRM_MODAL = document.getElementById('confirm-modal');
-        const CONFIRM_SHIP_BTN = document.getElementById('confirm-ship-btn');
-        const CANCEL_SHIP_BTN = document.getElementById('cancel-ship-btn');
-        
-        const LIBRARIES_CONTAINER = document.getElementById('libraries-container');
-        const SHIPMENTS_CONTAINER = document.getElementById('shipments-container');
-        const TAB_SHIPMENTS = document.getElementById('tab-shipments');
-        const TAB_LIBRARIES = document.getElementById('tab-libraries');
-        
-        // Элементы для управления библиотекой
-        const WAREHOUSE_FORM = document.getElementById('warehouse-form');
-        const WAREHOUSE_LIST_DIV = document.getElementById('warehouse-list');
-        const ARTICLE_FORM = document.getElementById('article-form');
-        const ARTICLE_LIST_DIV = document.getElementById('article-list');
-
-
-        // --- 2. УТИЛИТЫ ---
-
-        /** Переключение вкладок */
-        window.showTab = function(tabName) {
-            if (tabName === 'shipments') {
-                SHIPMENTS_CONTAINER.classList.remove('hidden');
-                LIBRARIES_CONTAINER.classList.add('hidden');
-                TAB_SHIPMENTS.classList.add('border-indigo-600', 'text-indigo-600');
-                TAB_SHIPMENTS.classList.remove('border-transparent', 'text-gray-600');
-                TAB_LIBRARIES.classList.remove('border-indigo-600', 'text-indigo-600');
-                TAB_LIBRARIES.classList.add('border-transparent', 'text-gray-600');
-            } else if (tabName === 'libraries') {
-                LIBRARIES_CONTAINER.classList.remove('hidden');
-                SHIPMENTS_CONTAINER.classList.add('hidden');
-                TAB_LIBRARIES.classList.add('border-indigo-600', 'text-indigo-600');
-                TAB_LIBRARIES.classList.remove('border-transparent', 'text-gray-600');
-                TAB_SHIPMENTS.classList.remove('border-indigo-600', 'text-indigo-600');
-                TAB_SHIPMENTS.classList.add('border-transparent', 'text-gray-600');
-            }
-        }
-
-        /** Форматирует дату в DD.MM.YYYY */
-        const formatDate = (date) => {
-            if (!date) return '—';
-            const d = new Date(date);
-            const day = String(d.getDate()).padStart(2, '0');
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const year = d.getFullYear();
-            return `${day}.${month}.${year}`;
-        };
-
-        /** Находит баркод по артикулу */
-        const findBarcodeByArticle = (article) => {
-            const item = articles.find(a => a.article === article);
-            return item ? item.barcode : '';
-        };
-
-        /** Генерирует массив ШК КОРОБОВ с автоинкрементом */
-        window.generateBoxBarcodes = function() {
-            const initialCodeInput = document.getElementById('initialBoxCode');
-            const boxCountInput = document.getElementById('boxCount');
-            const initialCode = parseInt(initialCodeInput.value, 10);
-            const boxCount = parseInt(boxCountInput.value, 10);
-            const preview = document.getElementById('barcode-preview');
-
-            if (isNaN(initialCode) || initialCodeInput.value.length === 0 || boxCount < 1) {
-                preview.classList.add('hidden');
-                return [];
-            }
-
-            const boxBarcodes = [];
-            for (let i = 0; i < boxCount; i++) {
-                boxBarcodes.push(`WB_${initialCode + i}`);
-            }
-
-            preview.textContent = `Будет сгенерировано ${boxCount} кодов. Первый: WB_${initialCode}, Последний: WB_${initialCode + boxCount - 1}`;
-            preview.classList.remove('hidden');
-
-            return boxBarcodes;
-        }
-
-        /** Обновляет баркод в форме при смене артикула */
-        window.updateBarcode = function() {
-            const selectedArticle = ARTICLE_SELECT.value;
-            BARCODE_INPUT.value = findBarcodeByArticle(selectedArticle);
-        }
-
-        /** Обновляет цвет рамки формы в зависимости от маркетплейса */
-        window.updateFormBorder = function(event) {
-             const marketplace = event.target.value;
-             // Удаляем классы бордера (граница)
-             FORM_CONTAINER.classList.remove('border-purple-600', 'border-blue-600', 'border-gray-300');
-             // Добавляем общий класс, если это не редактирование
-             if (!editingShipmentId) {
-                FORM_CONTAINER.classList.add('border-gray-300');
-             }
-
-             if (marketplace === 'WB') {
-                 FORM_CONTAINER.classList.add('border-purple-600');
-             } else if (marketplace === 'OZON') {
-                 FORM_CONTAINER.classList.add('border-blue-600');
-             }
-        }
-        
-        /** Всплывающее сообщение (замена alert) */
-        function alertMessage(type, message) {
-            const container = document.createElement('div');
-            container.className = `fixed top-4 right-4 p-4 rounded-xl shadow-lg text-white max-w-sm z-[100] transition-opacity duration-300`;
-
-            if (type === 'success') {
-                container.classList.add('bg-green-600');
-            } else if (type === 'error') {
-                container.classList.add('bg-red-600');
-            }
-
-            container.textContent = message;
-            document.body.appendChild(container);
-
-            setTimeout(() => {
-                container.style.opacity = '0';
-                setTimeout(() => container.remove(), 300);
-            }, 3000);
-        }
-
-        /** Модальное окно подтверждения (замена confirm) */
-        function showCustomConfirmation(message) {
-            return new Promise(resolve => {
-                // Создаем и отображаем временный модал для подтверждения удаления
-                const modal = document.createElement('div');
-                modal.className = 'fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-[1000]';
-                modal.innerHTML = `
-                    <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm">
-                        <h3 class="text-xl font-bold mb-4 text-gray-800">Подтвердите Действие</h3>
-                        <p class="mb-6 text-gray-600">${message}</p>
-                        <div class="flex justify-end gap-3">
-                            <button id="modal-cancel" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">Отмена</button>
-                            <button id="modal-confirm" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold">Подтвердить</button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(modal);
-
-                document.getElementById('modal-cancel').onclick = () => {
-                    modal.remove();
-                    resolve(false);
-                };
-
-                document.getElementById('modal-confirm').onclick = () => {
-                    modal.remove();
-                    resolve(true);
-                };
-            });
-        }
-
-        // --- 3. FIREBASE И АВТОРИЗАЦИЯ ---
-
-        async function initFirebase() {
-            if (!firebaseConfig) {
-                console.error("Firebase config is missing. Waiting for environment variables.");
-                LOADING_INDICATOR.innerHTML = '<span class="text-red-500 font-bold">ОШИБКА: Конфигурация Firebase не найдена. Пожалуйста, перезагрузите страницу или рабочее пространство.</span>';
-                return; // Прерываем инициализацию
-            }
-
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            setLogLevel('debug'); // Включить логирование для отладки
-
-            // Аутентификация
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                } else {
-                    // Если нет пользователя, пробуем войти по токену или анонимно
-                    try {
-                        if (initialAuthToken) {
-                            const result = await signInWithCustomToken(auth, initialAuthToken);
-                            userId = result.user.uid;
-                        } else {
-                            const result = await signInAnonymously(auth);
-                            userId = result.user.uid;
-                        }
-                    } catch (error) {
-                        console.error("Ошибка аутентификации:", error);
-                        userId = crypto.randomUUID();
-                    }
-                }
-                USER_ID_SPAN.textContent = userId;
-                if (userId) {
-                    setupRealtimeListeners();
-                }
-            });
-        }
-        
-        /** Устанавливает все слушатели Firestore */
-        function setupRealtimeListeners() {
-            // Слушатель для Поставок
-            setupShipmentsListener();
-            // Слушатели для Справочников
-            setupWarehouseListener();
-            setupArticleListener();
-        }
-
-
-        // --- 4. УПРАВЛЕНИЕ БИБЛИОТЕКАМИ (Справочники) ---
-        
-        // Функции для генерации корректных путей коллекций в соответствии с правилами Canvas
-        const getWarehouseCollectionPath = () => `artifacts/${appId}/users/${userId}/warehouses_library`;
-        const getArticleCollectionPath = () => `artifacts/${appId}/users/${userId}/articles_library`;
-        
-        /** Ручное добавление склада */
-        WAREHOUSE_FORM.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const nameInput = document.getElementById('warehouse-name-input');
-            const name = nameInput.value.trim();
-            if (!name) return;
-
-            try {
-                // Используем динамический путь
-                await setDoc(doc(collection(db, getWarehouseCollectionPath())), { name: name });
-                alertMessage('success', `Склад "${name}" добавлен.`);
-                nameInput.value = '';
-            } catch (e) {
-                console.error("Ошибка добавления склада: ", e);
-                alertMessage('error', 'Ошибка добавления склада.');
-            }
-        });
-
-        /** Ручное добавление артикула */
-        ARTICLE_FORM.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const articleInput = document.getElementById('article-name-input');
-            const barcodeInput = document.getElementById('article-barcode-input');
-            const article = articleInput.value.trim();
-            const barcode = barcodeInput.value.trim();
-            if (!article || !barcode) return;
-
-            try {
-                // Используем динамический путь
-                await setDoc(doc(collection(db, getArticleCollectionPath())), { article: article, barcode: barcode });
-                alertMessage('success', `Артикул "${article}" добавлен.`);
-                articleInput.value = '';
-                barcodeInput.value = '';
-            } catch (e) {
-                console.error("Ошибка добавления артикула: ", e);
-                alertMessage('error', 'Ошибка добавления артикула.');
-            }
-        });
-        
-        /** Удаление элемента библиотеки */
-        window.deleteLibraryItem = async function(collectionPath, id) {
-             const isConfirmed = await showCustomConfirmation('Удалить этот элемент справочника?');
-             if (!isConfirmed) return;
-
-             try {
-                await deleteDoc(doc(db, collectionPath, id));
-                alertMessage('success', 'Элемент удален.');
-            } catch (e) {
-                console.error("Ошибка удаления элемента справочника: ", e);
-                alertMessage('error', 'Ошибка удаления. См. консоль.');
-            }
-        }
-        
-        /** Слушатель для Складов */
-        function setupWarehouseListener() {
-            // Используем динамический путь
-            onSnapshot(collection(db, getWarehouseCollectionPath()), (snapshot) => {
-                warehouses = [];
-                snapshot.forEach((doc) => {
-                    warehouses.push({ id: doc.id, ...doc.data() });
-                });
-                renderWarehouseList();
-                loadWarehouseDataToForm(); // Обновляем выпадающий список
-            }, (error) => {
-                console.error("Ошибка получения складов:", error);
-                WAREHOUSE_LIST_DIV.innerHTML = '<p class="text-red-500 text-sm">Ошибка загрузки складов.</p>';
-            });
-        }
-        
-        /** Слушатель для Артикулов */
-        function setupArticleListener() {
-            // Используем динамический путь
-            onSnapshot(collection(db, getArticleCollectionPath()), (snapshot) => {
-                articles = [];
-                snapshot.forEach((doc) => {
-                    articles.push({ id: doc.id, ...doc.data() });
-                });
-                renderArticleList();
-                loadArticleDataToForm(); // Обновляем выпадающий список
-            }, (error) => {
-                console.error("Ошибка получения артикулов:", error);
-                ARTICLE_LIST_DIV.innerHTML = '<p class="text-red-500 text-sm">Ошибка загрузки артикулов.</p>';
-            });
-        }
-
-        /** Рендеринг списка складов в "Справочниках" */
-        function renderWarehouseList() {
-            WAREHOUSE_LIST_DIV.innerHTML = '';
-            const path = getWarehouseCollectionPath();
-            if (warehouses.length === 0) {
-                WAREHOUSE_LIST_DIV.innerHTML = '<p class="text-gray-500 text-sm">Склады пока не добавлены.</p>';
-                return;
-            }
-            warehouses.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'flex justify-between items-center p-3 bg-gray-50 border rounded-lg';
-                // Передаем динамический путь в функцию deleteLibraryItem
-                div.innerHTML = `
-                    <span class="font-medium text-gray-700">${item.name}</span>
-                    <button onclick="deleteLibraryItem('${path}', '${item.id}')" class="text-red-500 hover:text-red-700 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 112 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"/></svg>
-                    </button>
-                `;
-                WAREHOUSE_LIST_DIV.appendChild(div);
-            });
-        }
-
-        /** Рендеринг списка артикулов в "Справочниках" */
-        function renderArticleList() {
-            ARTICLE_LIST_DIV.innerHTML = '';
-            const path = getArticleCollectionPath();
-            if (articles.length === 0) {
-                ARTICLE_LIST_DIV.innerHTML = '<p class="text-gray-500 text-sm">Артикулы пока не добавлены.</p>';
-                return;
-            }
-            articles.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'flex justify-between items-center p-3 bg-gray-50 border rounded-lg';
-                // Передаем динамический путь в функцию deleteLibraryItem
-                div.innerHTML = `
-                    <div>
-                        <span class="font-medium text-gray-700 block">${item.article}</span>
-                        <span class="text-xs text-gray-500 font-mono">Баркод: ${item.barcode}</span>
-                    </div>
-                    <button onclick="deleteLibraryItem('${path}', '${item.id}')" class="text-red-500 hover:text-red-700 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 112 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"/></svg>
-                    </button>
-                `;
-                ARTICLE_LIST_DIV.appendChild(div);
-            });
-        }
-        
-        /** Загрузка Складов в выпадающий список формы */
-        function loadWarehouseDataToForm() {
-            WAREHOUSE_SELECT.innerHTML = '<option value="" disabled selected>Выберите склад...</option>';
-            warehouses.forEach(warehouse => {
-                const option = document.createElement('option');
-                option.value = warehouse.name;
-                option.textContent = warehouse.name;
-                WAREHOUSE_SELECT.appendChild(option);
-            });
-        }
-
-        /** Загрузка Артикулов в выпадающий список формы */
-        function loadArticleDataToForm() {
-            ARTICLE_SELECT.innerHTML = '<option value="" disabled selected>Выберите артикул...</option>';
-            articles.forEach(item => {
-                const option = document.createElement('option');
-                option.value = item.article;
-                option.textContent = item.article;
-                ARTICLE_SELECT.appendChild(option);
-            });
-        }
-
-
-        // --- 5. CRUD (CREATE, READ, UPDATE, DELETE) ---
-
-        /** Слушатель изменений в Firestore для Поставок */
-        function setupShipmentsListener() {
-            // Путь к коллекции: /artifacts/{appId}/users/{userId}/shipments
-            const collectionPath = `artifacts/${appId}/users/${userId}/shipments`;
-            const q = collection(db, collectionPath);
-
-            onSnapshot(q, (snapshot) => {
-                const newShipments = [];
-                snapshot.forEach((doc) => {
-                    newShipments.push({ id: doc.id, ...doc.data() });
-                });
-                shipments = newShipments;
-
-                // Сортировка по дате создания (timestamp) - Сортировка в коде
-                shipments.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
-
-                renderShipments();
-                LOADING_INDICATOR.classList.add('hidden');
-            }, (error) => {
-                console.error("Ошибка при получении данных:", error);
-                LOADING_INDICATOR.innerHTML = '<span class="text-red-500 font-bold">Ошибка подключения к базе данных. Пожалуйста, проверьте консоль.</span>';
-            });
-        }
-
-        /** Сохранение/Обновление поставки */
-        FORM.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            if (!userId) {
-                alertMessage('error', 'Система не авторизована. Пожалуйста, перезагрузите страницу.');
-                return;
-            }
-
-            const shipmentId = document.getElementById('shipment-id').value;
-            const marketplace = document.querySelector('input[name="marketplace"]:checked')?.value;
-            
-            if (!marketplace) {
-                 alertMessage('error', 'Пожалуйста, выберите Маркетплейс (WB или OZON).');
-                 return;
-            }
-
-            const warehouse = WAREHOUSE_SELECT.value;
-            const article = ARTICLE_SELECT.value;
-            const barcode = BARCODE_INPUT.value;
-            const unitsPerBox = parseInt(document.getElementById('unitsPerBox').value, 10);
-            const boxCount = parseInt(document.getElementById('boxCount').value, 10);
-            const supplyBarcodeSuffix = document.getElementById('supplyBarcode').value;
-            const status = document.querySelector('input[name="status"]:checked')?.value;
-            const ttnNumber = document.getElementById('ttnNumber').value;
-            const weight = parseFloat(document.getElementById('weight').value);
-            const volume = parseFloat(document.getElementById('volume').value);
-
-            const boxBarcodes = generateBoxBarcodes();
-            if (boxBarcodes.length === 0) {
-                 alertMessage('error', 'Не удалось сгенерировать ШК коробов. Проверьте начальный код и количество.');
-                 return;
-            }
-
-            const data = {
-                marketplace: marketplace,
-                warehouse: warehouse, // Колонка B
-                article: article,
-                barcode: barcode,
-                unitsPerBox: unitsPerBox,
-                boxCount: boxCount,
-                boxBarcodes: boxBarcodes,
-                supplyBarcode: `WB-GI-${supplyBarcodeSuffix}`,
-                status: status,
-                ttnNumber: ttnNumber, // Колонка E
-                weight: weight, // Колонка F
-                volume: volume, // Колонка G
-                userId: userId,
-            };
-            
-            let docRef;
-            if (shipmentId) {
-                docRef = doc(db, `artifacts/${appId}/users/${userId}/shipments`, shipmentId);
-            } else {
-                 docRef = doc(collection(db, `artifacts/${appId}/users/${userId}/shipments`));
-            }
-
-
-            try {
-                if (shipmentId) {
-                    await setDoc(docRef, { ...data }, { merge: true });
-                    alertMessage('success', 'Поставка успешно обновлена!');
-                } else {
-                    await setDoc(docRef, {
-                        ...data,
-                        dateCreated: formatDate(Date.now()), // Колонка C
-                        dateSent: null, // Колонка D (Пока не отправлено)
-                        timestamp: serverTimestamp()
-                    });
-                    alertMessage('success', 'Новая поставка успешно создана!');
-                }
-                resetForm();
-            } catch (e) {
-                console.error("Ошибка записи документа: ", e);
-                alertMessage('error', 'Ошибка сохранения данных. См. консоль.');
-            }
-        });
-
-        /** Удаление поставки */
-        window.deleteShipment = async function(id) {
-             const isConfirmed = await showCustomConfirmation('Вы уверены, что хотите безвозвратно удалить эту поставку?');
-             if (!isConfirmed) return;
-
-             try {
-                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/shipments`, id));
-                alertMessage('success', 'Поставка удалена.');
-            } catch (e) {
-                console.error("Ошибка удаления документа: ", e);
-                alertMessage('error', 'Ошибка удаления. См. консоль.');
-            }
-        }
-
-        /** Загрузка данных поставки в форму для редактирования */
-        window.editShipment = function(id) {
-            const shipment = shipments.find(s => s.id === id);
-            if (!shipment) return;
-
-            editingShipmentId = id;
-
-            // 1. Установка ID
-            document.getElementById('shipment-id').value = id;
-
-            // 2. Маркетплейс
-            document.querySelector(`input[name="marketplace"][value="${shipment.marketplace}"]`).checked = true;
-            updateFormBorder({target: {value: shipment.marketplace}});
-
-            // 3. Библиотечные данные
-            WAREHOUSE_SELECT.value = shipment.warehouse;
-            ARTICLE_SELECT.value = shipment.article;
-            BARCODE_INPUT.value = shipment.barcode;
-
-            // 4. Количества
-            document.getElementById('unitsPerBox').value = shipment.unitsPerBox;
-            document.getElementById('boxCount').value = shipment.boxCount;
-
-            // 5. ШК КОРОБА и Поставки
-            const initialBoxCode = shipment.boxBarcodes[0] ? shipment.boxBarcodes[0].replace('WB_', '') : '';
-            document.getElementById('initialBoxCode').value = initialBoxCode;
-            generateBoxBarcodes(); 
-
-            const supplyBarcodeSuffix = shipment.supplyBarcode.replace('WB-GI-', '');
-            document.getElementById('supplyBarcode').value = supplyBarcodeSuffix;
-
-            // 6. Дополнительные поля
-            document.getElementById('ttnNumber').value = shipment.ttnNumber;
-            document.getElementById('weight').value = shipment.weight;
-            document.getElementById('volume').value = shipment.volume;
-
-
-            // 7. Статус
-            document.querySelector(`input[name="status"][value="${shipment.status}"]`).checked = true;
-
-            // Обновляем заголовок формы
-            FORM_TITLE.textContent = `Редактирование #${id.substring(0, 5)}...`;
-
-            FORM_CONTAINER.scrollIntoView({ behavior: 'smooth' });
-        }
-
-        /** Сброс формы */
-        window.resetForm = function() {
-            FORM.reset();
-            document.getElementById('shipment-id').value = '';
-            BARCODE_INPUT.value = '';
-            FORM_TITLE.textContent = 'Создать Новую Поставку';
-            FORM_CONTAINER.classList.remove('border-purple-600', 'border-blue-600');
-            editingShipmentId = null;
-        }
-
-        /** Открытие модального окна для подтверждения отправки */
-        window.openShipModal = function(id) {
-            CONFIRM_MODAL.classList.remove('hidden');
-            CONFIRM_MODAL.classList.add('flex');
-
-            CONFIRM_SHIP_BTN.onclick = () => {
-                markAsShipped(id);
-                closeShipModal();
-            };
-        }
-
-        /** Закрытие модального окна */
-        CANCEL_SHIP_BTN.onclick = () => closeShipModal();
-        function closeShipModal() {
-            CONFIRM_MODAL.classList.add('hidden');
-            CONFIRM_MODAL.classList.remove('flex');
-        }
-
-        /** Обновление поля dateSent (Колонка D) */
-        async function markAsShipped(id) {
-            try {
-                const docRef = doc(db, `artifacts/${appId}/users/${userId}/shipments`, id);
-                await setDoc(docRef, {
-                    status: 'in_transit', // Сразу переводим в статус "В пути"
-                    dateSent: formatDate(Date.now()), // Фиксируем дату отправки
-                }, { merge: true });
-                alertMessage('success', 'Поставка отмечена как отправленная! Статус обновлен.');
-            } catch (e) {
-                console.error("Ошибка при обновлении статуса отправки: ", e);
-                alertMessage('error', 'Не удалось обновить статус отправки. См. консоль.');
-            }
-        }
-
-        // --- 6. РЕНДЕРИНГ И ФИЛЬТРАЦИЯ ---
-
-        /** Рендерит список карточек */
-        function renderShipments() {
-            SHIPMENT_LIST.innerHTML = '';
-            const filterMarketplace = document.getElementById('filter-marketplace').value;
-            const filterStatus = document.getElementById('filter-status').value;
-
-            const filteredShipments = shipments.filter(shipment => {
-                const marketMatch = filterMarketplace ? shipment.marketplace === filterMarketplace : true;
-                const statusMatch = filterStatus ? shipment.status === filterStatus : true;
-                return marketMatch && statusMatch;
-            });
-
-            document.getElementById('shipment-count').textContent = filteredShipments.length;
-
-            if (filteredShipments.length === 0) {
-                 SHIPMENT_LIST.innerHTML = '<p class="p-6 text-center text-gray-500 bg-white rounded-xl shadow-lg">Нет поставок, соответствующих вашим фильтрам.</p>';
-                 return;
-            }
-
-            filteredShipments.forEach(shipment => {
-                const card = document.createElement('div');
-                // Классы для цвета бордера (Маркетплейс) и фона (Статус)
-                card.className = `p-5 rounded-xl shadow-md transition transform hover:shadow-lg marketplace-${shipment.marketplace.toLowerCase()} status-${shipment.status}`;
-
-                const statusMap = {
-                    'editing': 'В Редактировании',
-                    'collected': 'Собрано',
-                    'in_transit': 'В Пути'
-                };
-
-                const content = `
-                    <div class="flex justify-between items-start mb-3">
-                        <span class="text-xs font-semibold px-3 py-1 rounded-full text-white ${shipment.marketplace === 'WB' ? 'bg-[#cc005f]' : 'bg-[#005bff]'}">
-                            ${shipment.marketplace}
-                        </span>
-                        <span class="text-sm font-medium text-gray-700">
-                            ${shipment.warehouse}
-                        </span>
-                    </div>
-
-                    <h3 class="text-xl font-bold mb-3 text-gray-800">${shipment.article}</h3>
-
-                    <div class="space-y-1 text-sm text-gray-600">
-                        <p><strong class="font-semibold">Статус:</strong> <span class="font-bold">${statusMap[shipment.status]}</span></p>
-                        <p><strong>Создано (C):</strong> ${shipment.dateCreated}</p>
-                        <p><strong>Отправлено (D):</strong> <span class="${shipment.dateSent ? 'text-green-600 font-semibold' : 'text-red-500'}">${shipment.dateSent || 'НЕ ОТПРАВЛЕНО'}</span></p>
-                        <p><strong>Баркод:</strong> <span class="font-mono text-xs bg-gray-100 p-1 rounded">${shipment.barcode}</span></p>
-                        <p><strong>ШК Поставки:</strong> <span class="font-mono text-xs bg-gray-100 p-1 rounded">${shipment.supplyBarcode}</span></p>
-                        <p><strong>Коробов/Штук:</strong> ${shipment.boxCount} шт. (${shipment.unitsPerBox} ед./кор.)</p>
-                        <p><strong>Вес/Объем (F/G):</strong> ${shipment.weight} кг / ${shipment.volume} м³</p>
-                        <p><strong>ТТН (E):</strong> ${shipment.ttnNumber || '—'}</p>
-                        <p class="mt-2 text-xs text-gray-500"><strong>ШК Коробов:</strong> ${shipment.boxBarcodes.length > 0 ? shipment.boxBarcodes.join(', ').substring(0, 100) + '...' : 'Нет'}</p>
-                    </div>
-
-                    <div class="mt-4 flex flex-wrap gap-2">
-                        <button onclick="editShipment('${shipment.id}')" class="px-3 py-1 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition shadow-sm">
-                            Редактировать
-                        </button>
-                        ${!shipment.dateSent ?
-                            `<button onclick="openShipModal('${shipment.id}')" class="px-3 py-1 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition shadow-sm">
-                                Отправить (D)
-                            </button>`
-                            : ''
-                        }
-                        <button onclick="deleteShipment('${shipment.id}')" class="px-3 py-1 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition shadow-sm">
-                            Удалить
-                        </button>
-                    </div>
-                `;
-                card.innerHTML = content;
-                SHIPMENT_LIST.appendChild(card);
-            });
-        }
-
-        /** Применяет фильтры и обновляет рендеринг */
-        window.applyFilters = function() {
-            renderShipments();
-        }
-
-        // --- 7. ЗАПУСК ПРИЛОЖЕНИЯ ---
-
-        window.onload = async function() {
-            await initFirebase();
-            showTab('shipments'); // По умолчанию показываем вкладку "Поставки"
-        };
-
-    </script>
+    <!-- Список карточек -->
+    <div id="cards" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </div>
+
+<script>
+const GAS_ENDPOINT = '<<ВСТАВЬТЕ_ВАШ_EXEC_URL>>';
+
+const state = { refs:null, list:[], filtered:[] };
+
+function mpClass(mp){ return mp === 'OZON' ? 'mp-ozon' : 'mp-wb'; }
+function stageClass(s){
+  if (s === 'Собрано') return 'stage-packed';
+  if (s === 'В пути') return 'stage-inroute';
+  return 'stage-process';
+}
+
+async function apiGet(action) {
+  const r = await fetch(`${GAS_ENDPOINT}?action=${encodeURIComponent(action)}`);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.message||'Ошибка');
+  return j.data;
+}
+
+async function apiPost(body) {
+  const r = await fetch(GAS_ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.message||'Ошибка');
+  return j.data;
+}
+
+function fillRefs(refs){
+  // Склады
+  const wh = document.getElementById('warehouse');
+  wh.innerHTML = '';
+  refs.stocks.forEach(s => {
+    const o = document.createElement('option'); o.value = s; o.textContent = s; wh.appendChild(o);
+  });
+
+  // Артикулы → datalist
+  const dl = document.getElementById('art-list');
+  dl.innerHTML = '';
+  Object.keys(refs.dict).forEach(a=>{
+    const o = document.createElement('option'); o.value = a; dl.appendChild(o);
+  });
+}
+
+function bindAutoBarcode(){
+  const article = document.getElementById('article');
+  const barcode = document.getElementById('barcode');
+  article.addEventListener('change', ()=>{
+    const v = article.value.trim();
+    if (v && state.refs && state.refs.dict[v] !== undefined) {
+      barcode.value = state.refs.dict[v] || '';
+    }
+  });
+}
+
+function formToPayload(){
+  const p = {
+    id: document.getElementById('id').value.trim(),
+    marketplace: document.getElementById('marketplace').value,
+    warehouse: document.getElementById('warehouse').value,
+    status: document.getElementById('status').value,
+    article: document.getElementById('article').value.trim(),
+    barcode: document.getElementById('barcode').value.trim(),
+    unitsPerBox: document.getElementById('unitsPerBox').value,
+    boxes: document.getElementById('boxes').value,
+    boxStartNumeric: document.getElementById('boxStartNumeric').value,
+    supplyCode: document.getElementById('supplyCode').value.trim(),
+    weight: document.getElementById('weight').value,
+    volume: document.getElementById('volume').value,
+    ttn: document.getElementById('ttn').value.trim()
+  };
+  return p;
+}
+
+function resetForm(){
+  document.getElementById('ship-form').reset();
+  document.getElementById('id').value = '';
+}
+
+document.getElementById('resetBtn').addEventListener('click', resetForm);
+
+document.getElementById('ship-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  try{
+    const payload = formToPayload();
+    const res = await apiPost({ op:'upsert', payload });
+    resetForm();
+    await reloadList();
+    alert('Сохранено');
+  }catch(err){
+    alert('Ошибка: ' + err.message);
+  }
+});
+
+function renderCards(){
+  const wrap = document.getElementById('cards');
+  wrap.innerHTML = '';
+  state.filtered.forEach(item => {
+    const div = document.createElement('div');
+    div.className = `card rounded-xl shadow p-3 ${mpClass(item.marketplace)} ${stageClass(item.status)}`;
+
+    const top = document.createElement('div');
+    top.className = 'flex items-center justify-between gap-2 mb-2';
+    top.innerHTML = `<div class="font-semibold">${item.marketplace} · ${item.warehouse}</div>
+                     <div class="text-sm text-slate-600">Создано: ${item.created||'-'}</div>`;
+
+    const mid = document.createElement('div');
+    mid.className = 'text-sm space-y-1';
+    mid.innerHTML = `
+      <div><span class="text-slate-500">Статус:</span> ${item.status||'-'}</div>
+      <div><span class="text-slate-500">Артикул/Баркод:</span> ${item.article||'-'} / ${item.barcode||'-'}</div>
+      <div><span class="text-slate-500">Ед. в кор./Коробок:</span> ${item.unitsPerBox||'-'} / ${item.boxes||'-'}</div>
+      <div><span class="text-slate-500">ШК поставки:</span> ${item.supplyCode||'-'}</div>
+      <div><span class="text-slate-500">ШК короба(ы):</span> ${item.boxCodes||'-'}</div>
+      <div><span class="text-slate-500">Вес / Объём:</span> ${item.weight||'-'} кг / ${item.volume||'-'} м³</div>
+      <div><span class="text-slate-500">ТТН / Отправлен:</span> ${item.ttn||'-'} / ${item.shipped||'-'}</div>
+      <div class="text-xs text-slate-500">ID: ${item.id}</div>
+    `;
+
+    const btns = document.createElement('div');
+    btns.className = 'flex flex-wrap gap-2 mt-3';
+
+    const bEdit = document.createElement('button');
+    bEdit.className = 'px-3 py-1 rounded border';
+    bEdit.textContent = 'Редактировать';
+    bEdit.onclick = ()=>{
+      document.getElementById('id').value = item.id;
+      document.getElementById('marketplace').value = item.marketplace || 'WB';
+      document.getElementById('warehouse').value = item.warehouse || '';
+      document.getElementById('status').value = item.status || 'В процессе';
+      document.getElementById('article').value = item.article || '';
+      document.getElementById('barcode').value = item.barcode || '';
+      document.getElementById('unitsPerBox').value = item.unitsPerBox || '';
+      document.getElementById('boxes').value = item.boxes || '';
+      document.getElementById('boxStartNumeric').value = '';
+      document.getElementById('supplyCode').value = item.supplyCode || '';
+      document.getElementById('weight').value = item.weight || '';
+      document.getElementById('volume').value = item.volume || '';
+      document.getElementById('ttn').value = item.ttn || '';
+      window.scrollTo({ top:0, behavior:'smooth' });
+    };
+
+    const bShip = document.createElement('button');
+    bShip.className = 'px-3 py-1 rounded bg-emerald-600 text-white';
+    bShip.textContent = 'Отправлен';
+    bShip.onclick = async ()=>{
+      if (!confirm('Подтвердите: отметить поставку как отправленную?')) return;
+      const ttn = prompt('Введите/уточните номер ТТН (можно оставить пустым):', item.ttn || '');
+      try{
+        await apiPost({ op:'markShipped', id: item.id, ttn: (ttn||'') });
+        await reloadList();
+      }catch(err){ alert('Ошибка: '+err.message); }
+    };
+
+    btns.appendChild(bEdit);
+    btns.appendChild(bShip);
+
+    div.appendChild(top);
+    div.appendChild(mid);
+    div.appendChild(btns);
+    wrap.appendChild(div);
+  });
+}
+
+function applyFilters(){
+  const mp = document.getElementById('f-market').value;
+  const st = document.getElementById('f-stage').value;
+  const q  = document.getElementById('f-q').value.trim().toLowerCase();
+  state.filtered = state.list.filter(x => {
+    if (mp && x.marketplace !== mp) return false;
+    if (st && x.status !== st) return false;
+    if (q) {
+      const hay = `${x.article} ${x.barcode} ${x.warehouse} ${x.ttn}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  renderCards();
+}
+
+async function reloadList(){
+  const data = await apiGet('list');
+  state.list = data;
+  applyFilters();
+}
+
+async function boot(){
+  try{
+    state.refs = await apiGet('refs');
+    fillRefs(state.refs);
+    bindAutoBarcode();
+    await reloadList();
+  }catch(err){
+    alert('Ошибка инициализации: '+err.message);
+  }
+}
+
+['f-market','f-stage','f-q'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', applyFilters);
+});
+
+boot();
+</script>
 </body>
 </html>
