@@ -6,21 +6,37 @@
   <title>Поставки — WB/OZON</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    /* --- рамка по МП + мягкое свечение --- */
     .card{border-width:2px}
-    .mp-wb{border-color:#7a5cff}  /* WB фиолетовый */
-    .mp-ozon{border-color:#0969da} /* OZON синий   */
-    .stage-process{background:#ffffff}
-    .stage-packed{background:#fff7d6}
-    .stage-inroute{background:#eaffea}
+    .mp-wb{border-color:#8f7aff; box-shadow:0 0 0 1px rgba(143,122,255,.25), 0 8px 16px rgba(143,122,255,.08)}
+    .mp-ozon{border-color:#4a9af7; box-shadow:0 0 0 1px rgba(74,154,247,.25), 0 8px 16px rgba(74,154,247,.08)}
 
-    /* Чипы-индикаторы */
-    .chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.75rem;line-height:1;border:1px solid #e5e7eb;border-radius:9999px;padding:.25rem .5rem}
-    .chip.ok{border-color:#10b981;color:#065f46;background:#ecfdf5}
-    .chip.miss{color:#64748b;background:#f8fafc}
+    /* фон карточки по стадии */
+    .stage-process{background:#ffffff}
+    .stage-packed{background:#fff9db}   /* нежно-жёлтый */
+    .stage-inroute{background:#eaffe6}  /* нежно-зелёный */
+
+    /* --- плашки-индикаторы --- */
+    .chip{
+      display:inline-flex;align-items:center;gap:.35rem;
+      font-size:.75rem;line-height:1;
+      border:1px solid #e5e7eb;border-radius:9999px;padding:.25rem .5rem
+    }
     .chip svg{width:14px;height:14px}
 
+    /* цвет плашек по стадии */
+    .chip-stage-process{background:#ffffff; color:#334155}
+    .chip-stage-packed{background:#fff3bf; color:#5c4b00; border-color:#ffe08a}
+    .chip-stage-inroute{background:#d9f8d1; color:#0f5132; border-color:#b7f0ab}
+
+    /* если поле не заполнено — приглушаем плашку */
+    .chip.dim{opacity:.6; filter:saturate(.6)}
+
+    /* прогресс */
     .progress{height:6px;background:#e5e7eb;border-radius:9999px;overflow:hidden}
     .progress>span{display:block;height:100%;background:#10b981}
+
+    /* сетка строки позиции */
     .row{display:grid;grid-template-columns:1.2fr 1fr .7fr .7fr 1fr auto;gap:.5rem}
     .row > *{min-width:0}
   </style>
@@ -129,7 +145,7 @@ const state = { refs:null, list:[], filtered:[] };
 function mpClass(mp){ return mp === 'OZON' ? 'mp-ozon' : 'mp-wb'; }
 function stageClass(s){ if (s==='Собрано') return 'stage-packed'; if (s==='В пути') return 'stage-inroute'; return 'stage-process'; }
 
-// ---- API helpers (cache-buster для list) ----
+// ---- API helpers ----
 async function apiGet(action, params={}){
   const usp = new URLSearchParams({ action, ...params });
   const r = await fetch(`${GAS_ENDPOINT}?${usp.toString()}`);
@@ -145,7 +161,6 @@ function fillRefs(refs){
   const wh = document.getElementById('warehouse'); wh.innerHTML='';
   refs.stocks.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; wh.appendChild(o); });
 
-  // для автокомплита по артикулам используем datalist
   if (!document.getElementById('art-list')) {
     const dl = document.createElement('datalist'); dl.id='art-list'; document.body.appendChild(dl);
   }
@@ -168,7 +183,6 @@ function addItemRow(item={}){
     <button type="button" class="del px-3 py-2 border rounded">×</button>
   `;
 
-  // автоподстановка баркода по артикулу
   row.querySelector('.art').addEventListener('change', e=>{
     const v = e.target.value.trim();
     if (v && state.refs && state.refs.dict[v] !== undefined) {
@@ -218,18 +232,23 @@ document.getElementById('ship-form').addEventListener('submit', async (e)=>{
   try{
     const payload = formToPayload();
     await apiPost({ op:'upsert', payload });
-    await reloadList(true); // true = bust cache
+    await reloadList(true);
     alert('Сохранено');
     resetForm();
   }catch(err){ alert('Ошибка: ' + err.message); }
 });
 
-// ---- Карточки с индикаторами ----
-function chip(label, ok){
+// ---- Плашки ----
+function chip(label, ok, stage){
+  const stageClass =
+    stage === 'Собрано' ? 'chip-stage-packed' :
+    stage === 'В пути'  ? 'chip-stage-inroute' : 'chip-stage-process';
+
   const icon = ok
     ? '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0L3.3 10.9a1 1 0 1 1 1.4-1.4l3.1 3.1 6.9-6.9a1 1 0 0 1 1.4 0z"/></svg>'
-    : '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a7 7 0 1 1 0 14A7 7 0 0 1 10 3m0 3a1 1 0 0 0-1 1v3.5a1 1 0 0 0 2 0V7a1 1 0 0 0-1-1m0 8a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 10 14z"/></svg>';
-  return `<span class="chip ${ok ? 'ok' : 'miss'}">${icon}${label}</span>`;
+    : '<svg viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="3"/></svg>';
+
+  return `<span class="chip ${stageClass} ${ok ? '' : 'dim'}">${icon}${label}</span>`;
 }
 
 function indicatorsFromItems(items){
@@ -244,6 +263,7 @@ function indicatorsFromItems(items){
   return {chips, pct};
 }
 
+// ---- Рендер карточек ----
 function renderCards(){
   const wrap = document.getElementById('cards'); wrap.innerHTML='';
   state.filtered.forEach(item=>{
@@ -267,7 +287,9 @@ function renderCards(){
     mid.className = 'text-sm space-y-1';
     mid.innerHTML = `
       <div><span class="text-slate-500">Статус:</span> ${item.status||'-'}</div>
-      <div class="flex flex-wrap gap-1 mt-1">${chips.map(([l,ok])=>chip(l,ok)).join('')}</div>
+      <div class="flex flex-wrap gap-1 mt-1">
+        ${chips.map(([l,ok])=>chip(l,ok,item.status)).join('')}
+      </div>
       <div class="mt-2 progress" title="Заполнено ${pct}%"><span style="width:${pct}%"></span></div>
       <div class="mt-2"><span class="text-slate-500">Позиции:</span> ${item.items?.length||0}</div>
       <ul class="list-disc pl-5">${listItems}</ul>
@@ -290,8 +312,6 @@ function renderCards(){
       document.getElementById('weight').value = item.weight || '';
       document.getElementById('volume').value = item.volume || '';
       document.getElementById('ttn').value = item.ttn || '';
-
-      // заполнить позиции
       const holder = document.getElementById('items'); holder.innerHTML='';
       (item.items||[{ }]).forEach(it=> addItemRow(it));
       window.scrollTo({ top:0, behavior:'smooth' });
@@ -313,6 +333,7 @@ function renderCards(){
   });
 }
 
+// ---- Фильтры/инициализация ----
 function applyFilters(){
   const mp = document.getElementById('f-market').value;
   const st = document.getElementById('f-stage').value;
