@@ -299,11 +299,17 @@
         /** Обновляет цвет рамки формы в зависимости от маркетплейса */
         window.updateFormBorder = function(event) {
              const marketplace = event.target.value;
-             FORM_CONTAINER.classList.remove('border-purple-600', 'border-blue-600');
+             // Удаляем классы бордера (граница)
+             FORM_CONTAINER.classList.remove('border-purple-600', 'border-blue-600', 'border-gray-300');
+             // Добавляем общий класс, если это не редактирование
+             if (!editingShipmentId) {
+                FORM_CONTAINER.classList.add('border-gray-300');
+             }
+
              if (marketplace === 'WB') {
                  FORM_CONTAINER.classList.add('border-purple-600');
              } else if (marketplace === 'OZON') {
-                 FORM_CONTAINEL.classList.add('border-blue-600');
+                 FORM_CONTAINER.classList.add('border-blue-600');
              }
         }
 
@@ -311,8 +317,9 @@
 
         async function initFirebase() {
             if (!firebaseConfig) {
-                console.error("Firebase config is missing.");
-                return;
+                console.error("Firebase config is missing. Waiting for environment variables.");
+                LOADING_INDICATOR.innerHTML = '<span class="text-red-500 font-bold">ОШИБКА: Конфигурация Firebase не найдена. Пожалуйста, перезагрузите страницу или рабочее пространство.</span>';
+                return; // Прерываем инициализацию
             }
 
             app = initializeApp(firebaseConfig);
@@ -374,7 +381,9 @@
 
         /** Слушатель изменений в Firestore */
         function setupRealtimeListener() {
-            const q = collection(db, `artifacts/${appId}/users/${userId}/shipments`);
+            // Путь к коллекции: /artifacts/{appId}/users/{userId}/shipments
+            const collectionPath = `artifacts/${appId}/users/${userId}/shipments`;
+            const q = collection(db, collectionPath);
 
             onSnapshot(q, (snapshot) => {
                 const newShipments = [];
@@ -383,14 +392,15 @@
                 });
                 shipments = newShipments;
 
-                // Сортировка по дате создания (timestamp) - Сортировка в коде, чтобы не требовать индексов Firestore
+                // Сортировка по дате создания (timestamp) - Сортировка в коде
                 shipments.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
 
                 renderShipments();
                 LOADING_INDICATOR.classList.add('hidden');
             }, (error) => {
                 console.error("Ошибка при получении данных:", error);
-                LOADING_INDICATOR.textContent = "Ошибка загрузки. См. консоль.";
+                // Отображаем пользователю, что что-то пошло не так
+                LOADING_INDICATOR.innerHTML = '<span class="text-red-500 font-bold">Ошибка подключения к базе данных. Пожалуйста, проверьте консоль.</span>';
             });
         }
 
@@ -398,15 +408,27 @@
         FORM.addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            // Проверка на отсутствие userId (если Firebase не инициализировался)
+            if (!userId) {
+                alertMessage('error', 'Система не авторизована. Пожалуйста, перезагрузите страницу.');
+                return;
+            }
+
             const shipmentId = document.getElementById('shipment-id').value;
-            const marketplace = document.querySelector('input[name="marketplace"]:checked').value;
+            const marketplace = document.querySelector('input[name="marketplace"]:checked')?.value;
+            
+            if (!marketplace) {
+                 alertMessage('error', 'Пожалуйста, выберите Маркетплейс (WB или OZON).');
+                 return;
+            }
+
             const warehouse = WAREHOUSE_SELECT.value;
             const article = ARTICLE_SELECT.value;
             const barcode = BARCODE_INPUT.value;
             const unitsPerBox = parseInt(document.getElementById('unitsPerBox').value, 10);
             const boxCount = parseInt(document.getElementById('boxCount').value, 10);
             const supplyBarcodeSuffix = document.getElementById('supplyBarcode').value;
-            const status = document.querySelector('input[name="status"]:checked').value;
+            const status = document.querySelector('input[name="status"]:checked')?.value;
             const ttnNumber = document.getElementById('ttnNumber').value;
             const weight = parseFloat(document.getElementById('weight').value);
             const volume = parseFloat(document.getElementById('volume').value);
@@ -420,7 +442,7 @@
 
             const data = {
                 marketplace: marketplace,
-                warehouse: warehouse,
+                warehouse: warehouse, // Колонка B
                 article: article,
                 barcode: barcode,
                 unitsPerBox: unitsPerBox,
@@ -428,22 +450,29 @@
                 boxBarcodes: boxBarcodes,
                 supplyBarcode: `WB-GI-${supplyBarcodeSuffix}`,
                 status: status,
-                ttnNumber: ttnNumber,
-                weight: weight,
-                volume: volume,
-                userId: userId, // Для безопасности/фильтрации
+                ttnNumber: ttnNumber, // Колонка E
+                weight: weight, // Колонка F
+                volume: volume, // Колонка G
+                userId: userId,
             };
+            
+            // Определяем DocRef для создания или обновления
+            let docRef;
+            if (shipmentId) {
+                docRef = doc(db, `artifacts/${appId}/users/${userId}/shipments`, shipmentId);
+            } else {
+                 docRef = doc(collection(db, `artifacts/${appId}/users/${userId}/shipments`));
+            }
 
-            const docRef = doc(db, `artifacts/${appId}/users/${userId}/shipments`, shipmentId || 'new');
 
             try {
                 if (shipmentId) {
-                    // UPDATE
-                    await setDoc(docRef, { ...data, timestamp: shipments.find(s => s.id === shipmentId).timestamp }, { merge: true });
+                    // UPDATE: Обновляем только данные, сохраняя оригинальную дату создания
+                    await setDoc(docRef, { ...data }, { merge: true });
                     alertMessage('success', 'Поставка успешно обновлена!');
                 } else {
-                    // CREATE
-                    await setDoc(doc(collection(db, `artifacts/${appId}/users/${userId}/shipments`)), {
+                    // CREATE: Создаем новую запись
+                    await setDoc(docRef, {
                         ...data,
                         dateCreated: formatDate(Date.now()), // Колонка C
                         dateSent: null, // Колонка D (Пока не отправлено)
@@ -460,7 +489,10 @@
 
         /** Удаление поставки */
         window.deleteShipment = async function(id) {
-            if (!confirm('Вы уверены, что хотите безвозвратно удалить эту поставку?')) return;
+             // Используем alertMessage вместо confirm
+             const isConfirmed = await showCustomConfirmation('Вы уверены, что хотите безвозвратно удалить эту поставку?');
+             if (!isConfirmed) return;
+
              try {
                 await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/shipments`, id));
                 alertMessage('success', 'Поставка удалена.');
@@ -556,7 +588,7 @@
                     status: 'in_transit', // Сразу переводим в статус "В пути"
                     dateSent: formatDate(Date.now()), // Фиксируем дату отправки
                 }, { merge: true });
-                alertMessage('success', 'Поставка отмечена как отправленная!');
+                alertMessage('success', 'Поставка отмечена как отправленная! Статус обновлен.');
             } catch (e) {
                 console.error("Ошибка при обновлении статуса отправки: ", e);
                 alertMessage('error', 'Не удалось обновить статус отправки. См. консоль.');
@@ -662,6 +694,36 @@
                 container.style.opacity = '0';
                 setTimeout(() => container.remove(), 300);
             }, 3000);
+        }
+
+        /** Модальное окно подтверждения (замена confirm) */
+        function showCustomConfirmation(message) {
+            return new Promise(resolve => {
+                // Создаем и отображаем временный модал для подтверждения удаления
+                const modal = document.createElement('div');
+                modal.className = 'fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-[1000]';
+                modal.innerHTML = `
+                    <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm">
+                        <h3 class="text-xl font-bold mb-4 text-gray-800">Подтвердите Действие</h3>
+                        <p class="mb-6 text-gray-600">${message}</p>
+                        <div class="flex justify-end gap-3">
+                            <button id="modal-cancel" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">Отмена</button>
+                            <button id="modal-confirm" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold">Подтвердить</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+
+                document.getElementById('modal-cancel').onclick = () => {
+                    modal.remove();
+                    resolve(false);
+                };
+
+                document.getElementById('modal-confirm').onclick = () => {
+                    modal.remove();
+                    resolve(true);
+                };
+            });
         }
 
         // --- 7. ЗАПУСК ПРИЛОЖЕНИЯ ---
