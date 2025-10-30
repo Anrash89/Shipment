@@ -7,11 +7,21 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .card{border-width:2px}
-    .mp-wb{border-color:#7a5cff}
-    .mp-ozon{border-color:#0969da}
+    .mp-wb{border-color:#7a5cff}  /* WB фиолетовый */
+    .mp-ozon{border-color:#0969da} /* OZON синий   */
     .stage-process{background:#ffffff}
     .stage-packed{background:#fff7d6}
     .stage-inroute{background:#eaffea}
+
+    /* Чипы-индикаторы заполненности */
+    .chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.75rem;line-height:1;border:1px solid #e5e7eb;border-radius:9999px;padding:.25rem .5rem}
+    .chip.ok{border-color:#10b981;color:#065f46;background:#ecfdf5}
+    .chip.miss{color:#64748b;background:#f8fafc}
+    .chip svg{width:14px;height:14px}
+
+    /* Мини-прогресс */
+    .progress{height:6px;background:#e5e7eb;border-radius:9999px;overflow:hidden}
+    .progress>span{display:block;height:100%;background:#10b981}
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -147,14 +157,12 @@ async function apiPost(body) {
 }
 
 function fillRefs(refs){
-  // Склады
   const wh = document.getElementById('warehouse');
   wh.innerHTML = '';
   refs.stocks.forEach(s => {
     const o = document.createElement('option'); o.value = s; o.textContent = s; wh.appendChild(o);
   });
 
-  // Артикулы → datalist
   const dl = document.getElementById('art-list');
   dl.innerHTML = '';
   Object.keys(refs.dict).forEach(a=>{
@@ -196,14 +204,13 @@ function resetForm(){
   document.getElementById('ship-form').reset();
   document.getElementById('id').value = '';
 }
-
 document.getElementById('resetBtn').addEventListener('click', resetForm);
 
 document.getElementById('ship-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
   try{
     const payload = formToPayload();
-    const res = await apiPost({ op:'upsert', payload });
+    await apiPost({ op:'upsert', payload });
     resetForm();
     await reloadList();
     alert('Сохранено');
@@ -212,23 +219,62 @@ document.getElementById('ship-form').addEventListener('submit', async (e)=>{
   }
 });
 
+// ----- Карточки с индикаторами -----
+function chip(label, ok){
+  const icon = ok
+    ? '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0L3.3 10.9a1 1 0 1 1 1.4-1.4l3.1 3.1 6.9-6.9a1 1 0 0 1 1.4 0z"/></svg>'
+    : '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a7 7 0 1 1 0 14A7 7 0 0 1 10 3m0 3a1 1 0 0 0-1 1v3.5a1 1 0 0 0 2 0V7a1 1 0 0 0-1-1m0 8a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 10 14z"/></svg>';
+  return `<span class="chip ${ok ? 'ok' : 'miss'}">${icon}${label}</span>`;
+}
+
 function renderCards(){
   const wrap = document.getElementById('cards');
   wrap.innerHTML = '';
   state.filtered.forEach(item => {
+    const hasArticle   = !!(item.article && item.article.trim());
+    const hasBarcode   = !!(item.barcode && item.barcode.trim());
+    const hasUnits     = !!(item.unitsPerBox && String(item.unitsPerBox).trim());
+    const hasBoxes     = !!(item.boxes && String(item.boxes).trim());
+    const hasBoxCodes  = !!(item.boxCodes && item.boxCodes.trim());
+    const hasSupply    = !!(item.supplyCode && item.supplyCode.trim());
+    const hasWeight    = !!(item.weight && String(item.weight).trim());
+    const hasVolume    = !!(item.volume && String(item.volume).trim());
+    const hasTTN       = !!(item.ttn && item.ttn.trim());
+
+    const checks = [
+      ['Арт/Баркод', hasArticle && hasBarcode],
+      ['Коробки (ед/шт)', hasUnits && hasBoxes],
+      ['ШК короба', hasBoxCodes],
+      ['ШК поставки', hasSupply],
+      ['Вес/Объём', hasWeight && hasVolume],
+      ['ТТН', hasTTN]
+    ];
+
+    const done = checks.filter(c=>c[1]).length;
+    const total = checks.length;
+    const pct = Math.round((done/total)*100);
+
     const div = document.createElement('div');
     div.className = `card rounded-xl shadow p-3 ${mpClass(item.marketplace)} ${stageClass(item.status)}`;
 
     const top = document.createElement('div');
     top.className = 'flex items-center justify-between gap-2 mb-2';
-    top.innerHTML = `<div class="font-semibold">${item.marketplace} · ${item.warehouse}</div>
-                     <div class="text-sm text-slate-600">Создано: ${item.created||'-'}</div>`;
+    top.innerHTML = `
+      <div class="font-semibold">${item.marketplace} · ${item.warehouse}</div>
+      <div class="text-sm text-slate-600">Создано: ${item.created||'-'}</div>
+    `;
 
     const mid = document.createElement('div');
     mid.className = 'text-sm space-y-1';
     mid.innerHTML = `
       <div><span class="text-slate-500">Статус:</span> ${item.status||'-'}</div>
-      <div><span class="text-slate-500">Артикул/Баркод:</span> ${item.article||'-'} / ${item.barcode||'-'}</div>
+      <div class="flex flex-wrap gap-1 mt-1">
+        ${checks.map(([label, ok]) => chip(label, ok)).join('')}
+      </div>
+      <div class="mt-2 progress" title="Заполнено ${pct}%">
+        <span style="width:${pct}%"></span>
+      </div>
+      <div class="mt-2"><span class="text-slate-500">Артикул/Баркод:</span> ${item.article||'-'} / ${item.barcode||'-'}</div>
       <div><span class="text-slate-500">Ед. в кор./Коробок:</span> ${item.unitsPerBox||'-'} / ${item.boxes||'-'}</div>
       <div><span class="text-slate-500">ШК поставки:</span> ${item.supplyCode||'-'}</div>
       <div><span class="text-slate-500">ШК короба(ы):</span> ${item.boxCodes||'-'}</div>
@@ -323,5 +369,3 @@ boot();
 </script>
 </body>
 </html>
-
-
