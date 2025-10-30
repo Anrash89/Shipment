@@ -476,9 +476,10 @@
 
 
         // --- 4. УПРАВЛЕНИЕ БИБЛИОТЕКАМИ (Справочники) ---
-
-        const WAREHOUSE_COLLECTION = 'libraries/warehouses/data';
-        const ARTICLE_COLLECTION = 'libraries/articles/data';
+        
+        // Функции для генерации корректных путей коллекций в соответствии с правилами Canvas
+        const getWarehouseCollectionPath = () => `artifacts/${appId}/users/${userId}/warehouses_library`;
+        const getArticleCollectionPath = () => `artifacts/${appId}/users/${userId}/articles_library`;
         
         /** Ручное добавление склада */
         WAREHOUSE_FORM.addEventListener('submit', async (e) => {
@@ -488,7 +489,8 @@
             if (!name) return;
 
             try {
-                await setDoc(doc(collection(db, WAREHOUSE_COLLECTION)), { name: name });
+                // Используем динамический путь
+                await setDoc(doc(collection(db, getWarehouseCollectionPath())), { name: name });
                 alertMessage('success', `Склад "${name}" добавлен.`);
                 nameInput.value = '';
             } catch (e) {
@@ -507,7 +509,8 @@
             if (!article || !barcode) return;
 
             try {
-                await setDoc(doc(collection(db, ARTICLE_COLLECTION)), { article: article, barcode: barcode });
+                // Используем динамический путь
+                await setDoc(doc(collection(db, getArticleCollectionPath())), { article: article, barcode: barcode });
                 alertMessage('success', `Артикул "${article}" добавлен.`);
                 articleInput.value = '';
                 barcodeInput.value = '';
@@ -518,12 +521,12 @@
         });
         
         /** Удаление элемента библиотеки */
-        window.deleteLibraryItem = async function(collectionName, id) {
+        window.deleteLibraryItem = async function(collectionPath, id) {
              const isConfirmed = await showCustomConfirmation('Удалить этот элемент справочника?');
              if (!isConfirmed) return;
 
              try {
-                await deleteDoc(doc(db, collectionName, id));
+                await deleteDoc(doc(db, collectionPath, id));
                 alertMessage('success', 'Элемент удален.');
             } catch (e) {
                 console.error("Ошибка удаления элемента справочника: ", e);
@@ -533,7 +536,8 @@
         
         /** Слушатель для Складов */
         function setupWarehouseListener() {
-            onSnapshot(collection(db, WAREHOUSE_COLLECTION), (snapshot) => {
+            // Используем динамический путь
+            onSnapshot(collection(db, getWarehouseCollectionPath()), (snapshot) => {
                 warehouses = [];
                 snapshot.forEach((doc) => {
                     warehouses.push({ id: doc.id, ...doc.data() });
@@ -548,7 +552,8 @@
         
         /** Слушатель для Артикулов */
         function setupArticleListener() {
-            onSnapshot(collection(db, ARTICLE_COLLECTION), (snapshot) => {
+            // Используем динамический путь
+            onSnapshot(collection(db, getArticleCollectionPath()), (snapshot) => {
                 articles = [];
                 snapshot.forEach((doc) => {
                     articles.push({ id: doc.id, ...doc.data() });
@@ -564,6 +569,7 @@
         /** Рендеринг списка складов в "Справочниках" */
         function renderWarehouseList() {
             WAREHOUSE_LIST_DIV.innerHTML = '';
+            const path = getWarehouseCollectionPath();
             if (warehouses.length === 0) {
                 WAREHOUSE_LIST_DIV.innerHTML = '<p class="text-gray-500 text-sm">Склады пока не добавлены.</p>';
                 return;
@@ -571,9 +577,10 @@
             warehouses.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'flex justify-between items-center p-3 bg-gray-50 border rounded-lg';
+                // Передаем динамический путь в функцию deleteLibraryItem
                 div.innerHTML = `
                     <span class="font-medium text-gray-700">${item.name}</span>
-                    <button onclick="deleteLibraryItem('${WAREHOUSE_COLLECTION}', '${item.id}')" class="text-red-500 hover:text-red-700 transition">
+                    <button onclick="deleteLibraryItem('${path}', '${item.id}')" class="text-red-500 hover:text-red-700 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 112 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"/></svg>
                     </button>
                 `;
@@ -584,6 +591,7 @@
         /** Рендеринг списка артикулов в "Справочниках" */
         function renderArticleList() {
             ARTICLE_LIST_DIV.innerHTML = '';
+            const path = getArticleCollectionPath();
             if (articles.length === 0) {
                 ARTICLE_LIST_DIV.innerHTML = '<p class="text-gray-500 text-sm">Артикулы пока не добавлены.</p>';
                 return;
@@ -591,12 +599,13 @@
             articles.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'flex justify-between items-center p-3 bg-gray-50 border rounded-lg';
+                // Передаем динамический путь в функцию deleteLibraryItem
                 div.innerHTML = `
                     <div>
                         <span class="font-medium text-gray-700 block">${item.article}</span>
                         <span class="text-xs text-gray-500 font-mono">Баркод: ${item.barcode}</span>
                     </div>
-                    <button onclick="deleteLibraryItem('${ARTICLE_COLLECTION}', '${item.id}')" class="text-red-500 hover:text-red-700 transition">
+                    <button onclick="deleteLibraryItem('${path}', '${item.id}')" class="text-red-500 hover:text-red-700 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 112 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"/></svg>
                     </button>
                 `;
@@ -797,7 +806,6 @@
             document.getElementById('shipment-id').value = '';
             BARCODE_INPUT.value = '';
             FORM_TITLE.textContent = 'Создать Новую Поставку';
-            document.getElementById('barcode-preview').classList.add('hidden');
             FORM_CONTAINER.classList.remove('border-purple-600', 'border-blue-600');
             editingShipmentId = null;
         }
