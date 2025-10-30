@@ -13,22 +13,23 @@
     .stage-packed{background:#fff7d6}
     .stage-inroute{background:#eaffea}
 
-    /* Чипы-индикаторы заполненности */
+    /* Чипы-индикаторы */
     .chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.75rem;line-height:1;border:1px solid #e5e7eb;border-radius:9999px;padding:.25rem .5rem}
     .chip.ok{border-color:#10b981;color:#065f46;background:#ecfdf5}
     .chip.miss{color:#64748b;background:#f8fafc}
     .chip svg{width:14px;height:14px}
 
-    /* Мини-прогресс */
     .progress{height:6px;background:#e5e7eb;border-radius:9999px;overflow:hidden}
     .progress>span{display:block;height:100%;background:#10b981}
+    .row{display:grid;grid-template-columns:1.2fr 1fr .7fr .7fr 1fr auto;gap:.5rem}
+    .row > *{min-width:0}
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
   <div class="max-w-6xl mx-auto p-4">
     <h1 class="text-2xl font-bold mb-4">Поставки — WB / OZON</h1>
 
-    <!-- Панель фильтров -->
+    <!-- Фильтры -->
     <div class="grid md:grid-cols-4 gap-3 mb-4 items-end">
       <div>
         <label class="block text-sm mb-1">Фильтр по маркетплейсу</label>
@@ -53,173 +54,177 @@
       </div>
     </div>
 
-    <!-- Форма создания/редактирования -->
+    <!-- Форма -->
     <div class="bg-white rounded-xl shadow p-4 mb-6">
       <h2 class="text-lg font-semibold mb-3">Создать / Редактировать поставку</h2>
-      <form id="ship-form" class="grid md:grid-cols-3 gap-3">
+      <form id="ship-form" class="grid gap-3">
         <input type="hidden" id="id" />
-        <div>
-          <label class="block text-sm mb-1">Маркетплейс</label>
-          <select id="marketplace" class="w-full border rounded p-2" required>
-            <option value="WB">WB</option>
-            <option value="OZON">OZON</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Склад получатель</label>
-          <select id="warehouse" class="w-full border rounded p-2" required></select>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Стадия</label>
-          <select id="status" class="w-full border rounded p-2" required>
-            <option>В процессе</option>
-            <option>Собрано</option>
-            <option>В пути</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-sm mb-1">Артикул</label>
-          <input id="article" list="art-list" class="w-full border rounded p-2" placeholder="Выберите артикул" />
-          <datalist id="art-list"></datalist>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Баркод</label>
-          <input id="barcode" class="w-full border rounded p-2" placeholder="Автоподстановка по артикулу" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Ед. в коробке</label>
-          <input id="unitsPerBox" type="number" min="0" class="w-full border rounded p-2" />
+        <div class="grid md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-sm mb-1">Маркетплейс</label>
+            <select id="marketplace" class="w-full border rounded p-2" required>
+              <option value="WB">WB</option>
+              <option value="OZON">OZON</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Склад получатель</label>
+            <select id="warehouse" class="w-full border rounded p-2" required></select>
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Стадия</label>
+            <select id="status" class="w-full border rounded p-2" required>
+              <option>В процессе</option>
+              <option>Собрано</option>
+              <option>В пути</option>
+            </select>
+          </div>
         </div>
 
-        <div>
-          <label class="block text-sm mb-1">Кол-во коробок</label>
-          <input id="boxes" type="number" min="0" class="w-full border rounded p-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Стартовый ШК короба (только цифры)</label>
-          <input id="boxStartNumeric" type="number" min="0" class="w-full border rounded p-2" placeholder="Напр.: 1460805995" />
-          <p class="text-xs text-slate-500 mt-1">Будут сгенерированы WB_XXXXXXX, WB_XXXXXXX+1 ... на N коробок</p>
-        </div>
-        <div>
-          <label class="block text-sm mb-1">ШК поставки (WB-GI-...)</label>
-          <input id="supplyCode" class="w-full border rounded p-2" placeholder="WB-GI-..." />
+        <!-- Позиции -->
+        <div class="mt-2">
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-medium">Позиции (несколько артикулов)</div>
+            <button id="addItem" type="button" class="px-3 py-1 rounded border">+ Добавить позицию</button>
+          </div>
+          <div class="text-xs text-slate-500 mb-2">Для каждой позиции можно указать стартовый ШК короба — будут сгенерированы WB_XXXX.. на N коробок.</div>
+          <div id="items"></div>
         </div>
 
-        <div>
-          <label class="block text-sm mb-1">Вес (кг)</label>
-          <input id="weight" type="number" step="0.001" class="w-full border rounded p-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Объём (м³)</label>
-          <input id="volume" type="number" step="0.0001" class="w-full border rounded p-2" />
-        </div>
-        <div>
-          <label class="block text-sm mb-1">Номер ТТН (от ТК)</label>
-          <input id="ttn" class="w-full border rounded p-2" placeholder="Можно позже" />
+        <!-- Общие параметры -->
+        <div class="grid md:grid-cols-3 gap-3 mt-2">
+          <div>
+            <label class="block text-sm mb-1">ШК поставки (WB-GI-...)</label>
+            <input id="supplyCode" class="w-full border rounded p-2" placeholder="WB-GI-..." />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Вес (кг)</label>
+            <input id="weight" type="number" step="0.001" class="w-full border rounded p-2" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Объём (м³)</label>
+            <input id="volume" type="number" step="0.0001" class="w-full border rounded p-2" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Номер ТТН (от ТК)</label>
+            <input id="ttn" class="w-full border rounded p-2" placeholder="Можно позже" />
+          </div>
         </div>
 
-        <div class="md:col-span-3 flex gap-2 mt-2">
+        <div class="flex gap-2 mt-2">
           <button class="px-4 py-2 rounded bg-black text-white" type="submit">Сохранить</button>
           <button id="resetBtn" class="px-4 py-2 rounded border" type="button">Очистить форму</button>
         </div>
       </form>
     </div>
 
-    <!-- Список карточек -->
+    <!-- Карточки -->
     <div id="cards" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
   </div>
 
 <script>
 const GAS_ENDPOINT = 'https://billowing-wildflower-c0ad.topsith89.workers.dev';
-
 const state = { refs:null, list:[], filtered:[] };
 
 function mpClass(mp){ return mp === 'OZON' ? 'mp-ozon' : 'mp-wb'; }
-function stageClass(s){
-  if (s === 'Собрано') return 'stage-packed';
-  if (s === 'В пути') return 'stage-inroute';
-  return 'stage-process';
-}
+function stageClass(s){ if (s==='Собрано') return 'stage-packed'; if (s==='В пути') return 'stage-inroute'; return 'stage-process'; }
 
-async function apiGet(action) {
-  const r = await fetch(`${GAS_ENDPOINT}?action=${encodeURIComponent(action)}`);
-  const j = await r.json();
-  if (!j.ok) throw new Error(j.message||'Ошибка');
-  return j.data;
+// ---- API helpers (cache-buster для list) ----
+async function apiGet(action, params={}){
+  const usp = new URLSearchParams({ action, ...params });
+  const r = await fetch(`${GAS_ENDPOINT}?${usp.toString()}`);
+  const j = await r.json(); if (!j.ok) throw new Error(j.message||'Ошибка'); return j.data;
 }
-
-async function apiPost(body) {
+async function apiPost(body){
   const r = await fetch(GAS_ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-  const j = await r.json();
-  if (!j.ok) throw new Error(j.message||'Ошибка');
-  return j.data;
+  const j = await r.json(); if (!j.ok) throw new Error(j.message||'Ошибка'); return j.data;
 }
 
+// ---- Справочники ----
 function fillRefs(refs){
-  const wh = document.getElementById('warehouse');
-  wh.innerHTML = '';
-  refs.stocks.forEach(s => {
-    const o = document.createElement('option'); o.value = s; o.textContent = s; wh.appendChild(o);
-  });
+  const wh = document.getElementById('warehouse'); wh.innerHTML='';
+  refs.stocks.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; wh.appendChild(o); });
 
-  const dl = document.getElementById('art-list');
-  dl.innerHTML = '';
-  Object.keys(refs.dict).forEach(a=>{
-    const o = document.createElement('option'); o.value = a; dl.appendChild(o);
-  });
+  // для автокомплита по артикулам используем datalist
+  if (!document.getElementById('art-list')) {
+    const dl = document.createElement('datalist'); dl.id='art-list'; document.body.appendChild(dl);
+  }
+  const dl = document.getElementById('art-list'); dl.innerHTML='';
+  Object.keys(refs.dict).forEach(a=>{ const o=document.createElement('option'); o.value=a; dl.appendChild(o); });
 }
 
-function bindAutoBarcode(){
-  const article = document.getElementById('article');
-  const barcode = document.getElementById('barcode');
-  article.addEventListener('change', ()=>{
-    const v = article.value.trim();
+// ---- Позиции (UI) ----
+function addItemRow(item={}){
+  const wrap = document.getElementById('items');
+  const row = document.createElement('div');
+  row.className = 'row items-center mb-2';
+
+  row.innerHTML = `
+    <input class="art w-full border rounded p-2" list="art-list" placeholder="Артикул" value="${item.article||''}">
+    <input class="bar w-full border rounded p-2" placeholder="Баркод" value="${item.barcode||''}">
+    <input class="u w-full border rounded p-2" type="number" min="0" placeholder="Ед. в кор." value="${item.unitsPerBox||''}">
+    <input class="b w-full border rounded p-2" type="number" min="0" placeholder="Коробок" value="${item.boxes||''}">
+    <input class="s w-full border rounded p-2" type="number" min="0" placeholder="Старт. ШК (цифры)" value="${item.boxStartNumeric||''}">
+    <button type="button" class="del px-3 py-2 border rounded">×</button>
+  `;
+
+  // автоподстановка баркода по артикулу
+  row.querySelector('.art').addEventListener('change', e=>{
+    const v = e.target.value.trim();
     if (v && state.refs && state.refs.dict[v] !== undefined) {
-      barcode.value = state.refs.dict[v] || '';
+      row.querySelector('.bar').value = state.refs.dict[v] || '';
     }
   });
+  row.querySelector('.del').addEventListener('click', ()=> row.remove());
+  wrap.appendChild(row);
 }
 
+document.getElementById('addItem').addEventListener('click', ()=> addItemRow());
+
+// ---- Формирование payload ----
 function formToPayload(){
-  const p = {
+  const items = Array.from(document.querySelectorAll('#items .row')).map(r=>({
+    article: r.querySelector('.art').value.trim(),
+    barcode: r.querySelector('.bar').value.trim(),
+    unitsPerBox: r.querySelector('.u').value,
+    boxes: r.querySelector('.b').value,
+    boxStartNumeric: r.querySelector('.s').value
+  }));
+
+  return {
     id: document.getElementById('id').value.trim(),
     marketplace: document.getElementById('marketplace').value,
     warehouse: document.getElementById('warehouse').value,
     status: document.getElementById('status').value,
-    article: document.getElementById('article').value.trim(),
-    barcode: document.getElementById('barcode').value.trim(),
-    unitsPerBox: document.getElementById('unitsPerBox').value,
-    boxes: document.getElementById('boxes').value,
-    boxStartNumeric: document.getElementById('boxStartNumeric').value,
+    items,
     supplyCode: document.getElementById('supplyCode').value.trim(),
     weight: document.getElementById('weight').value,
     volume: document.getElementById('volume').value,
     ttn: document.getElementById('ttn').value.trim()
   };
-  return p;
 }
 
 function resetForm(){
   document.getElementById('ship-form').reset();
   document.getElementById('id').value = '';
+  document.getElementById('items').innerHTML = '';
+  addItemRow(); // одна пустая строка по умолчанию
 }
 document.getElementById('resetBtn').addEventListener('click', resetForm);
 
+// ---- Submit ----
 document.getElementById('ship-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
   try{
     const payload = formToPayload();
     await apiPost({ op:'upsert', payload });
-    resetForm();
-    await reloadList();
+    await reloadList(true); // true = bust cache
     alert('Сохранено');
-  }catch(err){
-    alert('Ошибка: ' + err.message);
-  }
+    resetForm();
+  }catch(err){ alert('Ошибка: ' + err.message); }
 });
 
-// ----- Карточки с индикаторами -----
+// ---- Карточки с индикаторами ----
 function chip(label, ok){
   const icon = ok
     ? '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0L3.3 10.9a1 1 0 1 1 1.4-1.4l3.1 3.1 6.9-6.9a1 1 0 0 1 1.4 0z"/></svg>'
@@ -227,32 +232,22 @@ function chip(label, ok){
   return `<span class="chip ${ok ? 'ok' : 'miss'}">${icon}${label}</span>`;
 }
 
+function indicatorsFromItems(items){
+  if (!Array.isArray(items) || !items.length) return {chips:[], pct:0};
+  const all = (pred)=> items.every(pred);
+  const chips = [
+    ['Арт/Баркод', all(it=>it.article && it.barcode)],
+    ['Коробки (ед/шт)', all(it=>it.unitsPerBox && it.boxes)],
+    ['ШК короба', all(it=>it.boxCodes && it.boxCodes.length>0)],
+  ];
+  const pct = Math.round(chips.filter(c=>c[1]).length / chips.length * 100);
+  return {chips, pct};
+}
+
 function renderCards(){
-  const wrap = document.getElementById('cards');
-  wrap.innerHTML = '';
-  state.filtered.forEach(item => {
-    const hasArticle   = !!(item.article && item.article.trim());
-    const hasBarcode   = !!(item.barcode && item.barcode.trim());
-    const hasUnits     = !!(item.unitsPerBox && String(item.unitsPerBox).trim());
-    const hasBoxes     = !!(item.boxes && String(item.boxes).trim());
-    const hasBoxCodes  = !!(item.boxCodes && item.boxCodes.trim());
-    const hasSupply    = !!(item.supplyCode && item.supplyCode.trim());
-    const hasWeight    = !!(item.weight && String(item.weight).trim());
-    const hasVolume    = !!(item.volume && String(item.volume).trim());
-    const hasTTN       = !!(item.ttn && item.ttn.trim());
-
-    const checks = [
-      ['Арт/Баркод', hasArticle && hasBarcode],
-      ['Коробки (ед/шт)', hasUnits && hasBoxes],
-      ['ШК короба', hasBoxCodes],
-      ['ШК поставки', hasSupply],
-      ['Вес/Объём', hasWeight && hasVolume],
-      ['ТТН', hasTTN]
-    ];
-
-    const done = checks.filter(c=>c[1]).length;
-    const total = checks.length;
-    const pct = Math.round((done/total)*100);
+  const wrap = document.getElementById('cards'); wrap.innerHTML='';
+  state.filtered.forEach(item=>{
+    const {chips, pct} = indicatorsFromItems(item.items || []);
 
     const div = document.createElement('div');
     div.className = `card rounded-xl shadow p-3 ${mpClass(item.marketplace)} ${stageClass(item.status)}`;
@@ -264,66 +259,56 @@ function renderCards(){
       <div class="text-sm text-slate-600">Создано: ${item.created||'-'}</div>
     `;
 
+    const listItems = (item.items||[]).slice(0,3).map(it=>{
+      return `<li>${it.article||'-'} / ${it.barcode||'-'} — ${it.unitsPerBox||'-'} ед × ${it.boxes||'-'} кор.</li>`;
+    }).join('');
+
     const mid = document.createElement('div');
     mid.className = 'text-sm space-y-1';
     mid.innerHTML = `
       <div><span class="text-slate-500">Статус:</span> ${item.status||'-'}</div>
-      <div class="flex flex-wrap gap-1 mt-1">
-        ${checks.map(([label, ok]) => chip(label, ok)).join('')}
-      </div>
-      <div class="mt-2 progress" title="Заполнено ${pct}%">
-        <span style="width:${pct}%"></span>
-      </div>
-      <div class="mt-2"><span class="text-slate-500">Артикул/Баркод:</span> ${item.article||'-'} / ${item.barcode||'-'}</div>
-      <div><span class="text-slate-500">Ед. в кор./Коробок:</span> ${item.unitsPerBox||'-'} / ${item.boxes||'-'}</div>
+      <div class="flex flex-wrap gap-1 mt-1">${chips.map(([l,ok])=>chip(l,ok)).join('')}</div>
+      <div class="mt-2 progress" title="Заполнено ${pct}%"><span style="width:${pct}%"></span></div>
+      <div class="mt-2"><span class="text-slate-500">Позиции:</span> ${item.items?.length||0}</div>
+      <ul class="list-disc pl-5">${listItems}</ul>
       <div><span class="text-slate-500">ШК поставки:</span> ${item.supplyCode||'-'}</div>
-      <div><span class="text-slate-500">ШК короба(ы):</span> ${item.boxCodes||'-'}</div>
       <div><span class="text-slate-500">Вес / Объём:</span> ${item.weight||'-'} кг / ${item.volume||'-'} м³</div>
       <div><span class="text-slate-500">ТТН / Отправлен:</span> ${item.ttn||'-'} / ${item.shipped||'-'}</div>
       <div class="text-xs text-slate-500">ID: ${item.id}</div>
     `;
 
-    const btns = document.createElement('div');
-    btns.className = 'flex flex-wrap gap-2 mt-3';
+    const btns = document.createElement('div'); btns.className='flex flex-wrap gap-2 mt-3';
 
     const bEdit = document.createElement('button');
-    bEdit.className = 'px-3 py-1 rounded border';
-    bEdit.textContent = 'Редактировать';
+    bEdit.className = 'px-3 py-1 rounded border'; bEdit.textContent='Редактировать';
     bEdit.onclick = ()=>{
       document.getElementById('id').value = item.id;
       document.getElementById('marketplace').value = item.marketplace || 'WB';
       document.getElementById('warehouse').value = item.warehouse || '';
       document.getElementById('status').value = item.status || 'В процессе';
-      document.getElementById('article').value = item.article || '';
-      document.getElementById('barcode').value = item.barcode || '';
-      document.getElementById('unitsPerBox').value = item.unitsPerBox || '';
-      document.getElementById('boxes').value = item.boxes || '';
-      document.getElementById('boxStartNumeric').value = '';
       document.getElementById('supplyCode').value = item.supplyCode || '';
       document.getElementById('weight').value = item.weight || '';
       document.getElementById('volume').value = item.volume || '';
       document.getElementById('ttn').value = item.ttn || '';
+
+      // заполнить позиции
+      const holder = document.getElementById('items'); holder.innerHTML='';
+      (item.items||[{ }]).forEach(it=> addItemRow(it));
       window.scrollTo({ top:0, behavior:'smooth' });
     };
 
     const bShip = document.createElement('button');
-    bShip.className = 'px-3 py-1 rounded bg-emerald-600 text-white';
-    bShip.textContent = 'Отправлен';
+    bShip.className = 'px-3 py-1 rounded bg-emerald-600 text-white'; bShip.textContent='Отправлен';
     bShip.onclick = async ()=>{
       if (!confirm('Подтвердите: отметить поставку как отправленную?')) return;
       const ttn = prompt('Введите/уточните номер ТТН (можно оставить пустым):', item.ttn || '');
-      try{
-        await apiPost({ op:'markShipped', id: item.id, ttn: (ttn||'') });
-        await reloadList();
-      }catch(err){ alert('Ошибка: '+err.message); }
+      await apiPost({ op:'markShipped', id:item.id, ttn: ttn||'' });
+      await reloadList(true);
     };
 
-    btns.appendChild(bEdit);
-    btns.appendChild(bShip);
+    btns.appendChild(bEdit); btns.appendChild(bShip);
 
-    div.appendChild(top);
-    div.appendChild(mid);
-    div.appendChild(btns);
+    div.appendChild(top); div.appendChild(mid); div.appendChild(btns);
     wrap.appendChild(div);
   });
 }
@@ -332,11 +317,11 @@ function applyFilters(){
   const mp = document.getElementById('f-market').value;
   const st = document.getElementById('f-stage').value;
   const q  = document.getElementById('f-q').value.trim().toLowerCase();
-  state.filtered = state.list.filter(x => {
+  state.filtered = state.list.filter(x=>{
     if (mp && x.marketplace !== mp) return false;
     if (st && x.status !== st) return false;
     if (q) {
-      const hay = `${x.article} ${x.barcode} ${x.warehouse} ${x.ttn}`.toLowerCase();
+      const hay = `${x.warehouse} ${x.ttn} ${(x.items||[]).map(it=>it.article+' '+it.barcode).join(' ')}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -344,27 +329,20 @@ function applyFilters(){
   renderCards();
 }
 
-async function reloadList(){
-  const data = await apiGet('list');
-  state.list = data;
-  applyFilters();
+async function reloadList(bust=false){
+  const data = await apiGet('list', bust ? { _ts: Date.now() } : {});
+  state.list = data; applyFilters();
 }
 
 async function boot(){
   try{
     state.refs = await apiGet('refs');
     fillRefs(state.refs);
-    bindAutoBarcode();
-    await reloadList();
-  }catch(err){
-    alert('Ошибка инициализации: '+err.message);
-  }
+    resetForm(); // добавит пустую позицию
+    await reloadList(true);
+  }catch(err){ alert('Ошибка инициализации: '+err.message); }
 }
-
-['f-market','f-stage','f-q'].forEach(id=>{
-  document.getElementById(id).addEventListener('input', applyFilters);
-});
-
+['f-market','f-stage','f-q'].forEach(id=> document.getElementById(id).addEventListener('input', applyFilters));
 boot();
 </script>
 </body>
