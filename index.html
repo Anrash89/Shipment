@@ -3,124 +3,674 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Учет отгрузок Маркетплейсы</title>
-    <link rel="stylesheet" href="style.css">
+    <title>WB/OZON Трекер Поставок</title>
+    <!-- Подключение Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Подключение шрифта Inter -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+
+        /* Цветовая палитра для маркетплейсов и статусов */
+        .marketplace-wb { border-left: 8px solid #cc005f; }
+        .marketplace-ozon { border-left: 8px solid #005bff; }
+
+        .status-editing { background-color: #ffffff; border-color: #94a3b8; } /* Белый - Редактура */
+        .status-collected { background-color: #fef08a; border-color: #eab308; } /* Желтый - Собрано */
+        .status-in_transit { background-color: #bbf7d0; border-color: #16a34a; } /* Нежно-зеленый - В пути */
+    </style>
 </head>
-<body>
+<body class="bg-gray-50 p-4 md:p-8 min-h-screen">
 
-    <header>
-        <h1>📦 Учет поставок на WB / OZON</h1>
-    </header>
+    <!-- Заголовок и фильтрация -->
+    <div class="max-w-7xl mx-auto mb-8">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">Менеджер Отгрузок WB/OZON</h1>
+        <p class="text-sm text-gray-500">Пользователь ID: <span id="user-id" class="font-mono text-xs bg-gray-200 p-1 rounded">Загрузка...</span></p>
 
-    <main>
-        <section id="form-section">
-            <h2>Создать новую поставку</h2>
-            <form id="deliveryForm">
-                
-                <div class="field-group marketplace-select">
-                    <label>Маркетплейс:</label>
-                    <div class="radio-options">
-                        <input type="radio" id="mp_wb" name="marketplace" value="WB" required onchange="updateFormBorder('WB')">
-                        <label for="mp_wb" class="mp-label wb-color-border">Wildberries</label>
-                        <input type="radio" id="mp_ozon" name="marketplace" value="OZON" onchange="updateFormBorder('OZON')">
-                        <label for="mp_ozon" class="mp-label ozon-color-border">OZON</label>
+        <div class="flex flex-col sm:flex-row gap-4 mt-6 p-4 bg-white shadow-lg rounded-xl">
+            <select id="filter-marketplace" class="p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition">
+                <option value="">Все Маркетплейсы</option>
+                <option value="WB">Wildberries</option>
+                <option value="OZON">OZON</option>
+            </select>
+            <select id="filter-status" class="p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition">
+                <option value="">Все Статусы</option>
+                <option value="editing">В Редактировании (Белый)</option>
+                <option value="collected">Собрано (Желтый)</option>
+                <option value="in_transit">В Пути (Зеленый)</option>
+            </select>
+            <button onclick="applyFilters()" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-200">
+                Применить Фильтры
+            </button>
+        </div>
+    </div>
+
+    <!-- Основной Контейнер -->
+    <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Колонка Формы -->
+        <div class="lg:col-span-1">
+            <div class="bg-white p-6 shadow-xl rounded-xl sticky top-8" id="form-container">
+                <h2 id="form-title" class="text-xl font-semibold mb-4 text-gray-700">Создать Новую Поставку</h2>
+                <form id="shipment-form" class="space-y-4">
+                    <input type="hidden" id="shipment-id">
+
+                    <!-- Выбор Маркетплейса -->
+                    <div class="market-select flex gap-2">
+                        <label class="font-medium text-gray-700 w-full">
+                            <input type="radio" name="marketplace" value="WB" required class="hidden" onchange="updateFormBorder(event)">
+                            <div class="p-3 text-center rounded-lg border-2 cursor-pointer transition duration-150 border-purple-300 bg-purple-50 hover:bg-purple-100 peer-checked:border-purple-600 peer-checked:bg-purple-200">
+                                Wildberries
+                            </div>
+                        </label>
+                        <label class="font-medium text-gray-700 w-full">
+                            <input type="radio" name="marketplace" value="OZON" required class="hidden" onchange="updateFormBorder(event)">
+                            <div class="p-3 text-center rounded-lg border-2 cursor-pointer transition duration-150 border-blue-300 bg-blue-50 hover:bg-blue-100 peer-checked:border-blue-600 peer-checked:bg-blue-200">
+                                OZON
+                            </div>
+                        </label>
                     </div>
+
+                    <!-- Склад Получатель (Город приемки) -->
+                    <div class="form-group">
+                        <label for="warehouse" class="block text-sm font-medium text-gray-700 mb-1">Склад Получатель (Город)</label>
+                        <select id="warehouse" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition">
+                            <option value="" disabled selected>Выберите склад...</option>
+                            <!-- Опции будут добавлены скриптом -->
+                        </select>
+                    </div>
+
+                    <!-- Артикул (Из справочника) -->
+                    <div class="form-group">
+                        <label for="article" class="block text-sm font-medium text-gray-700 mb-1">Артикул</label>
+                        <select id="article" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" onchange="updateBarcode()">
+                            <option value="" disabled selected>Выберите артикул...</option>
+                            <!-- Опции будут добавлены скриптом -->
+                        </select>
+                    </div>
+
+                    <!-- Баркод (Автозаполнение) -->
+                    <div class="form-group">
+                        <label for="barcode" class="block text-sm font-medium text-gray-700 mb-1">Баркод Товара (Авто)</label>
+                        <input type="text" id="barcode" readonly class="w-full p-3 border border-gray-200 bg-gray-100 rounded-lg cursor-not-allowed text-gray-600" placeholder="Баркод появится после выбора артикула">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- Штук в коробке -->
+                        <div class="form-group">
+                            <label for="unitsPerBox" class="block text-sm font-medium text-gray-700 mb-1">Штук в коробке</label>
+                            <input type="number" id="unitsPerBox" required min="1" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" value="1">
+                        </div>
+                        <!-- Количество коробок -->
+                        <div class="form-group">
+                            <label for="boxCount" class="block text-sm font-medium text-gray-700 mb-1">Количество коробок</label>
+                            <input type="number" id="boxCount" required min="1" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" value="1" oninput="generateBoxBarcodes()">
+                        </div>
+                    </div>
+
+                    <!-- ШК КОРОБА (Начальный код) -->
+                    <div class="form-group">
+                        <label for="initialBoxCode" class="block text-sm font-medium text-gray-700 mb-1">Начальный цифровой ШК КОРОБА (WB_...)</label>
+                        <div class="flex">
+                            <span class="p-3 bg-gray-200 border border-gray-300 rounded-l-lg font-mono text-sm select-none">WB_</span>
+                            <input type="number" id="initialBoxCode" required class="w-full p-3 border border-gray-300 rounded-r-lg focus:ring-purple-500 focus:border-purple-500 transition" oninput="generateBoxBarcodes()">
+                        </div>
+                        <p id="barcode-preview" class="text-xs text-gray-500 mt-1 italic hidden">Будет сгенерировано N кодов.</p>
+                    </div>
+
+                    <!-- ШК ПОСТАВКИ -->
+                    <div class="form-group">
+                        <label for="supplyBarcode" class="block text-sm font-medium text-gray-700 mb-1">ШК Поставки (WB-GI-...)</label>
+                        <div class="flex">
+                            <span class="p-3 bg-gray-200 border border-gray-300 rounded-l-lg font-mono text-sm select-none">WB-GI-</span>
+                            <input type="text" id="supplyBarcode" required class="w-full p-3 border border-gray-300 rounded-r-lg focus:ring-purple-500 focus:border-purple-500 transition" placeholder="Введите окончание кода">
+                        </div>
+                    </div>
+
+                    <!-- ТТН, Вес, Объем -->
+                    <div class="form-group">
+                        <label for="ttnNumber" class="block text-sm font-medium text-gray-700 mb-1">Номер ТТН от ТК</label>
+                        <input type="text" id="ttnNumber" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" placeholder="Номер транспортной накладной">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="weight" class="block text-sm font-medium text-gray-700 mb-1">Вес груза (кг)</label>
+                            <input type="number" id="weight" step="0.01" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" value="0" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="volume" class="block text-sm font-medium text-gray-700 mb-1">Объем (м³)</label>
+                            <input type="number" id="volume" step="0.001" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition" value="0" min="0">
+                        </div>
+                    </div>
+
+
+                    <!-- Статус Поставки -->
+                    <div class="form-group">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Статус Поставки (Цвет карточки)</label>
+                        <div class="flex flex-wrap gap-4">
+                            <label class="flex items-center space-x-2">
+                                <input type="radio" name="status" value="editing" required class="form-radio h-4 w-4 text-gray-500 focus:ring-gray-400">
+                                <span class="bg-white border border-gray-400 p-2 rounded-lg shadow-sm text-sm">В Редактировании (Белый)</span>
+                            </label>
+                            <label class="flex items-center space-x-2">
+                                <input type="radio" name="status" value="collected" class="form-radio h-4 w-4 text-yellow-500 focus:ring-yellow-400">
+                                <span class="bg-yellow-100 border border-yellow-400 p-2 rounded-lg shadow-sm text-sm">Собрано (Желтый)</span>
+                            </label>
+                            <label class="flex items-center space-x-2">
+                                <input type="radio" name="status" value="in_transit" class="form-radio h-4 w-4 text-green-500 focus:ring-green-400">
+                                <span class="bg-green-100 border border-green-400 p-2 rounded-lg shadow-sm text-sm">В Пути (Зеленый)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Кнопки формы -->
+                    <div class="flex gap-2 pt-4">
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow-md transition duration-200">
+                            Сохранить / Обновить Поставку
+                        </button>
+                        <button type="button" onclick="resetForm()" class="bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">
+                            Сброс
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Колонка Карточек Поставок -->
+        <div class="lg:col-span-2">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">Активные Поставки (<span id="shipment-count">0</span>)</h2>
+            <div id="shipment-list" class="space-y-4">
+                <!-- Карточки будут добавлены скриптом -->
+                <div id="loading-indicator" class="p-6 text-center text-gray-500">
+                    Загрузка данных...
                 </div>
-
-                <div class="form-fields">
-                    
-                    <div class="field-group">
-                        <label for="receiving_warehouse">Склад получатель (Город приёмки):</label>
-                        <select id="receiving_warehouse" name="receiving_warehouse" required>
-                            <option value="">Загрузка складов...</option>
-                        </select>
-                    </div>
-
-                    <div class="field-group">
-                        <label for="article">Артикул:</label>
-                        <select id="article" name="article" required>
-                            <option value="">Загрузка артикулов...</option>
-                        </select>
-                    </div>
-
-                    <div class="field-group">
-                        <label for="barcode">Баркод товара (Авт.):</label>
-                        <input type="text" id="barcode" name="barcode" readonly placeholder="Заполнится автоматически">
-                    </div>
-
-                    <div class="field-group">
-                        <label for="units_in_box">Штук в коробке (единиц товара):</label>
-                        <input type="number" id="units_in_box" name="units_in_box" min="1" value="1" required>
-                    </div>
-
-                    <div class="field-group">
-                        <label for="num_boxes">Количество коробок:</label>
-                        <input type="number" id="num_boxes" name="num_boxes" min="1" value="1" required>
-                    </div>
-
-                    <div class="field-group">
-                        <label for="starting_box_code">Стартовый ШК КОРОБА (цифры):</label>
-                        <div class="input-prefix">
-                            <span class="prefix">WB_</span>
-                            <input type="number" id="starting_box_code" name="starting_box_code" required>
-                        </div>
-                        <small>Пример: 1460805995. Генерируется +1 для каждой коробки.</small>
-                    </div>
-
-                    <div class="field-group">
-                        <label for="delivery_code">ШК Поставки (цифры/текст):</label>
-                        <div class="input-prefix">
-                            <span class="prefix">WB-GI-</span>
-                            <input type="text" id="delivery_code" name="delivery_code" required>
-                        </div>
-                    </div>
-                    
-                    <div class="field-group">
-                        <label for="stage">Стадия поставки:</label>
-                        <select id="stage" name="stage" required>
-                            <option value="white">В процессе редактуры (Белая)</option>
-                            <option value="yellow">Собрано, не отправлено (Желтая)</option>
-                            <option value="lightgreen">В пути (Зеленая)</option>
-                        </select>
-                    </div>
-
-                    <div class="field-group">
-                        <label for="ttn_number">Номер ТТН от ТК:</label>
-                        <input type="text" id="ttn_number" name="ttn_number">
-                    </div>
-
-                    <div class="field-group">
-                        <label for="weight">Вес груза (кг):</label>
-                        <input type="number" id="weight" name="weight" step="0.01">
-                    </div>
-
-                    <div class="field-group">
-                        <label for="volume">Объём (м³):</label>
-                        <input type="number" id="volume" name="volume" step="0.001">
-                    </div>
-
-                </div> <button type="submit" id="submit-button">Создать карточку</button>
-            </form>
-        </section>
-
-        <hr>
-
-        <section id="dashboard-section">
-            <h2>Текущие поставки</h2>
-            <div id="filter-options">
-                <button class="filter-btn active" data-filter="all">Все</button>
-                <button class="filter-btn" data-filter="WB">WB</button>
-                <button class="filter-btn" data-filter="OZON">OZON</button>
-                <button class="filter-btn" data-filter="yellow">Собрано</button>
-                <button class="filter-btn" data-filter="lightgreen">В пути</button>
             </div>
-            
-            <div id="cards-container">
-                <p class="loading-message">Загрузка данных о поставках...</p>
-            </div>
-        </section>
-    </main>
+        </div>
+    </div>
 
-    <script src="app.js"></script>
+    <!-- Модальное окно подтверждения отправки -->
+    <div id="confirm-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Подтвердите Отправку</h3>
+            <p class="mb-6 text-gray-600">Вы уверены, что хотите отметить эту поставку как "Отправленную"? Дата отправки будет зафиксирована.</p>
+            <div class="flex justify-end gap-3">
+                <button id="cancel-ship-btn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition">Отмена</button>
+                <button id="confirm-ship-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold">Подтвердить и Отправить</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Firebase Initialization -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, serverTimestamp, setLogLevel, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Глобальные переменные из среды Canvas
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app;
+        let db;
+        let auth;
+        let userId = null;
+        let shipments = [];
+        let editingShipmentId = null;
+
+        // --- 1. МОК-ДАННЫЕ (Имитация Google Sheets) ---
+        // В реальном приложении здесь должен быть вызов API для загрузки данных с листа "Склады"
+        const MOCK_WAREHOUSES = [
+            { name: 'Казань', code: 'KZN' },
+            { name: 'Электросталь', code: 'ELS' },
+            { name: 'Подольск', code: 'POD' },
+            { name: 'Санкт-Петербург', code: 'SPB' },
+        ];
+
+        // В реальном приложении здесь должен быть вызов API для загрузки данных с листа "Справочник"
+        const MOCK_ARTICLES = [
+            { article: '1024-RED', barcode: '460000010241' },
+            { article: '2048-BLUE', barcode: '460000020482' },
+            { article: '4096-GREEN', barcode: '460000040963' },
+            { article: '1111-TEST', barcode: '460000011111' },
+        ];
+
+        const WAREHOUSE_SELECT = document.getElementById('warehouse');
+        const ARTICLE_SELECT = document.getElementById('article');
+        const BARCODE_INPUT = document.getElementById('barcode');
+        const FORM = document.getElementById('shipment-form');
+        const FORM_CONTAINER = document.getElementById('form-container');
+        const FORM_TITLE = document.getElementById('form-title');
+        const SHIPMENT_LIST = document.getElementById('shipment-list');
+        const USER_ID_SPAN = document.getElementById('user-id');
+        const LOADING_INDICATOR = document.getElementById('loading-indicator');
+        const CONFIRM_MODAL = document.getElementById('confirm-modal');
+        const CONFIRM_SHIP_BTN = document.getElementById('confirm-ship-btn');
+        const CANCEL_SHIP_BTN = document.getElementById('cancel-ship-btn');
+
+        // --- 2. УТИЛИТЫ ---
+
+        /** Форматирует дату в DD.MM.YYYY */
+        const formatDate = (date) => {
+            if (!date) return '—';
+            const d = new Date(date);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}.${month}.${year}`;
+        };
+
+        /** Находит баркод по артикулу */
+        const findBarcodeByArticle = (article) => {
+            const item = MOCK_ARTICLES.find(a => a.article === article);
+            return item ? item.barcode : '';
+        };
+
+        /** Генерирует массив ШК КОРОБОВ с автоинкрементом */
+        window.generateBoxBarcodes = function() {
+            const initialCodeInput = document.getElementById('initialBoxCode');
+            const boxCountInput = document.getElementById('boxCount');
+            const initialCode = parseInt(initialCodeInput.value, 10);
+            const boxCount = parseInt(boxCountInput.value, 10);
+            const preview = document.getElementById('barcode-preview');
+
+            if (isNaN(initialCode) || initialCodeInput.value.length === 0 || boxCount < 1) {
+                preview.classList.add('hidden');
+                return [];
+            }
+
+            const boxBarcodes = [];
+            for (let i = 0; i < boxCount; i++) {
+                boxBarcodes.push(`WB_${initialCode + i}`);
+            }
+
+            preview.textContent = `Будет сгенерировано ${boxCount} кодов. Первый: WB_${initialCode}, Последний: WB_${initialCode + boxCount - 1}`;
+            preview.classList.remove('hidden');
+
+            return boxBarcodes;
+        }
+
+        /** Обновляет баркод в форме при смене артикула */
+        window.updateBarcode = function() {
+            const selectedArticle = ARTICLE_SELECT.value;
+            BARCODE_INPUT.value = findBarcodeByArticle(selectedArticle);
+        }
+
+        /** Обновляет цвет рамки формы в зависимости от маркетплейса */
+        window.updateFormBorder = function(event) {
+             const marketplace = event.target.value;
+             FORM_CONTAINER.classList.remove('border-purple-600', 'border-blue-600');
+             if (marketplace === 'WB') {
+                 FORM_CONTAINER.classList.add('border-purple-600');
+             } else if (marketplace === 'OZON') {
+                 FORM_CONTAINEL.classList.add('border-blue-600');
+             }
+        }
+
+        // --- 3. FIREBASE И АВТОРИЗАЦИЯ ---
+
+        async function initFirebase() {
+            if (!firebaseConfig) {
+                console.error("Firebase config is missing.");
+                return;
+            }
+
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            setLogLevel('debug'); // Включить логирование для отладки
+
+            // Аутентификация
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                } else {
+                    // Если нет пользователя, пробуем войти по токену или анонимно
+                    try {
+                        if (initialAuthToken) {
+                            const result = await signInWithCustomToken(auth, initialAuthToken);
+                            userId = result.user.uid;
+                        } else {
+                            const result = await signInAnonymously(auth);
+                            userId = result.user.uid;
+                        }
+                    } catch (error) {
+                        console.error("Ошибка аутентификации:", error);
+                        // Fallback: использовать временный ID, если аутентификация не удалась
+                        userId = crypto.randomUUID();
+                    }
+                }
+                USER_ID_SPAN.textContent = userId;
+                if (userId) {
+                    // После получения userId начинаем слушать данные
+                    setupRealtimeListener();
+                }
+            });
+        }
+
+        // --- 4. ЗАГРУЗКА БИБЛИОТЕЧНЫХ ДАННЫХ В ФОРМУ ---
+
+        function loadLibraryData() {
+            // Загрузка Складов
+            WAREHOUSE_SELECT.innerHTML = '<option value="" disabled selected>Выберите склад...</option>';
+            MOCK_WAREHOUSES.forEach(warehouse => {
+                const option = document.createElement('option');
+                option.value = warehouse.name;
+                option.textContent = warehouse.name;
+                WAREHOUSE_SELECT.appendChild(option);
+            });
+
+            // Загрузка Артикулов
+            ARTICLE_SELECT.innerHTML = '<option value="" disabled selected>Выберите артикул...</option>';
+            MOCK_ARTICLES.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.article;
+                option.textContent = item.article;
+                ARTICLE_SELECT.appendChild(option);
+            });
+        }
+
+        // --- 5. CRUD (CREATE, READ, UPDATE, DELETE) ---
+
+        /** Слушатель изменений в Firestore */
+        function setupRealtimeListener() {
+            const q = collection(db, `artifacts/${appId}/users/${userId}/shipments`);
+
+            onSnapshot(q, (snapshot) => {
+                const newShipments = [];
+                snapshot.forEach((doc) => {
+                    newShipments.push({ id: doc.id, ...doc.data() });
+                });
+                shipments = newShipments;
+
+                // Сортировка по дате создания (timestamp) - Сортировка в коде, чтобы не требовать индексов Firestore
+                shipments.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+                renderShipments();
+                LOADING_INDICATOR.classList.add('hidden');
+            }, (error) => {
+                console.error("Ошибка при получении данных:", error);
+                LOADING_INDICATOR.textContent = "Ошибка загрузки. См. консоль.";
+            });
+        }
+
+        /** Сохранение/Обновление поставки */
+        FORM.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const shipmentId = document.getElementById('shipment-id').value;
+            const marketplace = document.querySelector('input[name="marketplace"]:checked').value;
+            const warehouse = WAREHOUSE_SELECT.value;
+            const article = ARTICLE_SELECT.value;
+            const barcode = BARCODE_INPUT.value;
+            const unitsPerBox = parseInt(document.getElementById('unitsPerBox').value, 10);
+            const boxCount = parseInt(document.getElementById('boxCount').value, 10);
+            const supplyBarcodeSuffix = document.getElementById('supplyBarcode').value;
+            const status = document.querySelector('input[name="status"]:checked').value;
+            const ttnNumber = document.getElementById('ttnNumber').value;
+            const weight = parseFloat(document.getElementById('weight').value);
+            const volume = parseFloat(document.getElementById('volume').value);
+
+            // Автогенерация ШК КОРОБОВ
+            const boxBarcodes = generateBoxBarcodes();
+            if (boxBarcodes.length === 0) {
+                 alertMessage('error', 'Не удалось сгенерировать ШК коробов. Проверьте начальный код и количество.');
+                 return;
+            }
+
+            const data = {
+                marketplace: marketplace,
+                warehouse: warehouse,
+                article: article,
+                barcode: barcode,
+                unitsPerBox: unitsPerBox,
+                boxCount: boxCount,
+                boxBarcodes: boxBarcodes,
+                supplyBarcode: `WB-GI-${supplyBarcodeSuffix}`,
+                status: status,
+                ttnNumber: ttnNumber,
+                weight: weight,
+                volume: volume,
+                userId: userId, // Для безопасности/фильтрации
+            };
+
+            const docRef = doc(db, `artifacts/${appId}/users/${userId}/shipments`, shipmentId || 'new');
+
+            try {
+                if (shipmentId) {
+                    // UPDATE
+                    await setDoc(docRef, { ...data, timestamp: shipments.find(s => s.id === shipmentId).timestamp }, { merge: true });
+                    alertMessage('success', 'Поставка успешно обновлена!');
+                } else {
+                    // CREATE
+                    await setDoc(doc(collection(db, `artifacts/${appId}/users/${userId}/shipments`)), {
+                        ...data,
+                        dateCreated: formatDate(Date.now()), // Колонка C
+                        dateSent: null, // Колонка D (Пока не отправлено)
+                        timestamp: serverTimestamp() // Для сортировки
+                    });
+                    alertMessage('success', 'Новая поставка успешно создана!');
+                }
+                resetForm(); // Очистить форму после сохранения
+            } catch (e) {
+                console.error("Ошибка записи документа: ", e);
+                alertMessage('error', 'Ошибка сохранения данных. См. консоль.');
+            }
+        });
+
+        /** Удаление поставки */
+        window.deleteShipment = async function(id) {
+            if (!confirm('Вы уверены, что хотите безвозвратно удалить эту поставку?')) return;
+             try {
+                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/shipments`, id));
+                alertMessage('success', 'Поставка удалена.');
+            } catch (e) {
+                console.error("Ошибка удаления документа: ", e);
+                alertMessage('error', 'Ошибка удаления. См. консоль.');
+            }
+        }
+
+        /** Загрузка данных поставки в форму для редактирования */
+        window.editShipment = function(id) {
+            const shipment = shipments.find(s => s.id === id);
+            if (!shipment) return;
+
+            editingShipmentId = id;
+
+            // 1. Установка ID
+            document.getElementById('shipment-id').value = id;
+
+            // 2. Маркетплейс
+            document.querySelector(`input[name="marketplace"][value="${shipment.marketplace}"]`).checked = true;
+            updateFormBorder({target: {value: shipment.marketplace}});
+
+            // 3. Библиотечные данные
+            WAREHOUSE_SELECT.value = shipment.warehouse;
+            ARTICLE_SELECT.value = shipment.article;
+            BARCODE_INPUT.value = shipment.barcode;
+
+            // 4. Количества
+            document.getElementById('unitsPerBox').value = shipment.unitsPerBox;
+            document.getElementById('boxCount').value = shipment.boxCount;
+
+            // 5. ШК КОРОБА и Поставки
+            // Извлекаем начальный код из первого элемента массива
+            const initialBoxCode = shipment.boxBarcodes[0] ? shipment.boxBarcodes[0].replace('WB_', '') : '';
+            document.getElementById('initialBoxCode').value = initialBoxCode;
+            generateBoxBarcodes(); // Пересчитываем для превью
+
+            // Извлекаем окончание ШК Поставки
+            const supplyBarcodeSuffix = shipment.supplyBarcode.replace('WB-GI-', '');
+            document.getElementById('supplyBarcode').value = supplyBarcodeSuffix;
+
+            // 6. Дополнительные поля
+            document.getElementById('ttnNumber').value = shipment.ttnNumber;
+            document.getElementById('weight').value = shipment.weight;
+            document.getElementById('volume').value = shipment.volume;
+
+
+            // 7. Статус
+            document.querySelector(`input[name="status"][value="${shipment.status}"]`).checked = true;
+
+            // Обновляем заголовок формы
+            FORM_TITLE.textContent = `Редактирование #${id.substring(0, 5)}...`;
+
+            // Скроллим к форме
+            FORM_CONTAINER.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        /** Сброс формы */
+        window.resetForm = function() {
+            FORM.reset();
+            document.getElementById('shipment-id').value = '';
+            BARCODE_INPUT.value = '';
+            FORM_TITLE.textContent = 'Создать Новую Поставку';
+            document.getElementById('barcode-preview').classList.add('hidden');
+            FORM_CONTAINER.classList.remove('border-purple-600', 'border-blue-600');
+            editingShipmentId = null;
+        }
+
+        /** Открытие модального окна для подтверждения отправки */
+        window.openShipModal = function(id) {
+            CONFIRM_MODAL.classList.remove('hidden');
+            CONFIRM_MODAL.classList.add('flex');
+
+            CONFIRM_SHIP_BTN.onclick = () => {
+                markAsShipped(id);
+                closeShipModal();
+            };
+        }
+
+        /** Закрытие модального окна */
+        CANCEL_SHIP_BTN.onclick = () => closeShipModal();
+        function closeShipModal() {
+            CONFIRM_MODAL.classList.add('hidden');
+            CONFIRM_MODAL.classList.remove('flex');
+        }
+
+        /** Обновление поля dateSent (Колонка D) */
+        async function markAsShipped(id) {
+            try {
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/shipments`, id);
+                await setDoc(docRef, {
+                    status: 'in_transit', // Сразу переводим в статус "В пути"
+                    dateSent: formatDate(Date.now()), // Фиксируем дату отправки
+                }, { merge: true });
+                alertMessage('success', 'Поставка отмечена как отправленная!');
+            } catch (e) {
+                console.error("Ошибка при обновлении статуса отправки: ", e);
+                alertMessage('error', 'Не удалось обновить статус отправки. См. консоль.');
+            }
+        }
+
+        // --- 6. РЕНДЕРИНГ И ФИЛЬТРАЦИЯ ---
+
+        /** Рендерит список карточек */
+        function renderShipments() {
+            SHIPMENT_LIST.innerHTML = '';
+            const filterMarketplace = document.getElementById('filter-marketplace').value;
+            const filterStatus = document.getElementById('filter-status').value;
+
+            const filteredShipments = shipments.filter(shipment => {
+                const marketMatch = filterMarketplace ? shipment.marketplace === filterMarketplace : true;
+                const statusMatch = filterStatus ? shipment.status === filterStatus : true;
+                return marketMatch && statusMatch;
+            });
+
+            document.getElementById('shipment-count').textContent = filteredShipments.length;
+
+            if (filteredShipments.length === 0) {
+                 SHIPMENT_LIST.innerHTML = '<p class="p-6 text-center text-gray-500 bg-white rounded-xl shadow-lg">Нет поставок, соответствующих вашим фильтрам.</p>';
+                 return;
+            }
+
+            filteredShipments.forEach(shipment => {
+                const card = document.createElement('div');
+                // Классы для цвета бордера (Маркетплейс) и фона (Статус)
+                card.className = `p-5 rounded-xl shadow-md transition transform hover:shadow-lg marketplace-${shipment.marketplace.toLowerCase()} status-${shipment.status}`;
+
+                const statusMap = {
+                    'editing': 'В Редактировании',
+                    'collected': 'Собрано',
+                    'in_transit': 'В Пути'
+                };
+
+                const content = `
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="text-xs font-semibold px-3 py-1 rounded-full text-white ${shipment.marketplace === 'WB' ? 'bg-[#cc005f]' : 'bg-[#005bff]'}">
+                            ${shipment.marketplace}
+                        </span>
+                        <span class="text-sm font-medium text-gray-700">
+                            ${shipment.warehouse}
+                        </span>
+                    </div>
+
+                    <h3 class="text-xl font-bold mb-3 text-gray-800">${shipment.article}</h3>
+
+                    <div class="space-y-1 text-sm text-gray-600">
+                        <p><strong class="font-semibold">Статус:</strong> <span class="font-bold">${statusMap[shipment.status]}</span></p>
+                        <p><strong>Создано (C):</strong> ${shipment.dateCreated}</p>
+                        <p><strong>Отправлено (D):</strong> <span class="${shipment.dateSent ? 'text-green-600 font-semibold' : 'text-red-500'}">${shipment.dateSent || 'НЕ ОТПРАВЛЕНО'}</span></p>
+                        <p><strong>Баркод:</strong> <span class="font-mono text-xs bg-gray-100 p-1 rounded">${shipment.barcode}</span></p>
+                        <p><strong>ШК Поставки:</strong> <span class="font-mono text-xs bg-gray-100 p-1 rounded">${shipment.supplyBarcode}</span></p>
+                        <p><strong>Коробов/Штук:</strong> ${shipment.boxCount} шт. (${shipment.unitsPerBox} ед./кор.)</p>
+                        <p><strong>Вес/Объем (F/G):</strong> ${shipment.weight} кг / ${shipment.volume} м³</p>
+                        <p><strong>ТТН (E):</strong> ${shipment.ttnNumber || '—'}</p>
+                        <p class="mt-2 text-xs text-gray-500"><strong>ШК Коробов:</strong> ${shipment.boxBarcodes.length > 0 ? shipment.boxBarcodes.join(', ').substring(0, 100) + '...' : 'Нет'}</p>
+                    </div>
+
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <button onclick="editShipment('${shipment.id}')" class="px-3 py-1 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition shadow-sm">
+                            Редактировать
+                        </button>
+                        ${!shipment.dateSent ?
+                            `<button onclick="openShipModal('${shipment.id}')" class="px-3 py-1 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition shadow-sm">
+                                Отправить (D)
+                            </button>`
+                            : ''
+                        }
+                        <button onclick="deleteShipment('${shipment.id}')" class="px-3 py-1 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition shadow-sm">
+                            Удалить
+                        </button>
+                    </div>
+                `;
+                card.innerHTML = content;
+                SHIPMENT_LIST.appendChild(card);
+            });
+        }
+
+        /** Применяет фильтры и обновляет рендеринг */
+        window.applyFilters = function() {
+            renderShipments();
+        }
+
+        /** Всплывающее сообщение (замена alert) */
+        function alertMessage(type, message) {
+            const container = document.createElement('div');
+            container.className = `fixed top-4 right-4 p-4 rounded-xl shadow-lg text-white max-w-sm z-[100] transition-opacity duration-300`;
+
+            if (type === 'success') {
+                container.classList.add('bg-green-600');
+            } else if (type === 'error') {
+                container.classList.add('bg-red-600');
+            }
+
+            container.textContent = message;
+            document.body.appendChild(container);
+
+            setTimeout(() => {
+                container.style.opacity = '0';
+                setTimeout(() => container.remove(), 300);
+            }, 3000);
+        }
+
+        // --- 7. ЗАПУСК ПРИЛОЖЕНИЯ ---
+
+        window.onload = async function() {
+            loadLibraryData();
+            await initFirebase();
+        };
+
+    </script>
 </body>
 </html>
