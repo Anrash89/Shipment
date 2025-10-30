@@ -233,17 +233,21 @@
     function generateBoxBarcodes(start,count){ const arr=[]; let n=BigInt(String(start).replace(/\D/g,'')); for(let i=0;i<Number(count||0);i++){arr.push('WB_'+n.toString()); n++;} return arr; }
 
     // ===== API (Apps Script)
-    async function api(action, payload={}){
-      if(!SHEETS_URL || SHEETS_URL.startsWith('PASTE_')){ alert('Не задан SHEETS_URL'); throw new Error('SHEETS_URL missing'); }
-      const res = await fetch(SHEETS_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ action, payload })
-      });
-      const json = await res.json();
-      if(!json.ok) throw new Error(json.error||'api error');
-      return json.data;
-    }
+    async function api(action, payload = {}) {
+  if (!SHEETS_URL || SHEETS_URL.startsWith('PASTE_')) {
+    alert('Не задан SHEETS_URL');
+    throw new Error('SHEETS_URL missing');
+  }
+  const res = await fetch(SHEETS_URL, {
+    method: 'POST',
+    // ВАЖНО: text/plain — чтобы не было preflight OPTIONS
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action, payload }),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'api error');
+  return json.data;
+}
 
     // ===== Bootstrap
     async function bootstrap(){
