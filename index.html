@@ -7,8 +7,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .card{ border-width:2px; transition:background-color .15s ease }
-    .mp-wb{ border-color:#8f7aff; box-shadow:0 0 0 1px rgba(143,122,255,.25), 0 8px 16px rgba(143,122,255,.08) }
-    .mp-ozon{ border-color:#4a9af7; box-shadow:0 0 0 1px rgba(74,154,247,.25), 0 8px 16px rgba(74,154,247,.08) }
+    .mp-wb{ border-color:#8f7aff; box-shadow:0 0 0 1px rgba(143,122,255,.25),0 8px 16px rgba(143,122,255,.08) }
+    .mp-ozon{ border-color:#4a9af7; box-shadow:0 0 0 1px rgba(74,154,247,.25),0 8px 16px rgba(74,154,247,.08) }
 
     .stage-process{ background:#ffffff !important; }
     .stage-packed { background:#fff6c2 !important; }
@@ -45,6 +45,21 @@
     .skeleton{ border:2px solid #e5e7eb; background:linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 37%,#f3f4f6 63%);
                background-size:400% 100%; animation:skeleton 1.2s ease-in-out infinite }
     @keyframes skeleton{ 0%{background-position:100% 0} 100%{background-position:0 0} }
+
+    .scope-btn{
+      padding:.35rem .9rem;
+      border-radius:9999px;
+      border:1px solid #e5e7eb;
+      font-size:.8rem;
+      background:#ffffff;
+      color:#6b7280;
+      cursor:pointer;
+    }
+    .scope-btn.scope-active{
+      background:#111827;
+      color:#ffffff;
+      border-color:#111827;
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -57,7 +72,14 @@
   </div>
 
   <div class="max-w-6xl mx-auto p-4">
-    <h1 class="text-2xl font-bold mb-4">Поставки — WB / OZON</h1>
+    <h1 class="text-2xl font-bold mb-2">Поставки — WB / OZON</h1>
+
+    <!-- Вкладки по архиву -->
+    <div class="flex gap-2 mb-4">
+      <button class="scope-btn scope-active" data-scope="active">Активные</button>
+      <button class="scope-btn" data-scope="archived">Архив</button>
+      <button class="scope-btn" data-scope="all">Все</button>
+    </div>
 
     <!-- Фильтры -->
     <div class="grid md:grid-cols-4 gap-3 mb-4 items-end">
@@ -163,7 +185,7 @@
 
 <script>
 const GAS_ENDPOINT = 'https://billowing-wildflower-c0ad.topsith89.workers.dev';
-const state = { refs:null, list:[], filtered:[] };
+const state = { refs:null, list:[], filtered:[], scope:'active' };
 
 function mpClass(mp){ return mp === 'OZON' ? 'mp-ozon' : 'mp-wb'; }
 function stageClass(s){
@@ -311,12 +333,20 @@ function renderSkeleton(n=6){
     wrap.appendChild(div);
   }
 }
+
+async function setArchived(id, flag){
+  await apiPost({ op:'setArchived', id, archived: !!flag });
+}
+
+/* отрисовка */
 function renderCards(){
   const wrap = document.getElementById('cards'); wrap.innerHTML='';
   state.filtered.forEach(item=>{
     const {chips, pct} = indicatorsFromItems(item.items || []);
     const div = document.createElement('div');
-    div.className = `card rounded-xl shadow p-3 ${mpClass(item.marketplace)} ${stageClass(item.status)}`;
+    // для архивных чуть притушим
+    const archivedClass = item.archived ? 'opacity-80' : '';
+    div.className = `card rounded-xl shadow p-3 ${mpClass(item.marketplace)} ${stageClass(item.status)} ${archivedClass}`;
 
     const headerSupply = item.supplyNumber || item.supplyCode || '';
 
@@ -337,6 +367,7 @@ function renderCards(){
     mid.className = 'text-sm space-y-1';
     mid.innerHTML = `
       <div><span class="text-slate-500">Статус:</span> ${item.status||'-'}</div>
+      ${item.archived ? '<div class="text-xs font-semibold text-rose-600">В архиве</div>' : ''}
       <div class="flex flex-wrap gap-1 mt-1">
         ${chips.map(([l,ok])=>chip(l,ok,item.status)).join('')}
       </div>
@@ -387,6 +418,36 @@ function renderCards(){
 
     btns.appendChild(bEdit);
     btns.appendChild(bShip);
+
+    if (!item.archived) {
+      const bArch = document.createElement('button');
+      bArch.className = 'px-3 py-1 rounded border border-slate-300 text-slate-500';
+      bArch.textContent = 'В архив';
+      bArch.onclick = async ()=>{
+        if (!confirm('Отправить поставку в архив?')) return;
+        try{
+          showPageLoader(true);
+          await setArchived(item.id, true);
+          await reloadList(true);
+        }catch(err){ alert('Ошибка: '+err.message); }
+        finally{ showPageLoader(false); }
+      };
+      btns.appendChild(bArch);
+    } else {
+      const bUn = document.createElement('button');
+      bUn.className = 'px-3 py-1 rounded border border-amber-500 text-amber-600';
+      bUn.textContent = 'Вернуть';
+      bUn.onclick = async ()=>{
+        try{
+          showPageLoader(true);
+          await setArchived(item.id, false);
+          await reloadList(true);
+        }catch(err){ alert('Ошибка: '+err.message); }
+        finally{ showPageLoader(false); }
+      };
+      btns.appendChild(bUn);
+    }
+
     div.appendChild(top);
     div.appendChild(mid);
     div.appendChild(btns);
@@ -394,12 +455,14 @@ function renderCards(){
   });
 }
 
-/* filters & boot */
+/* фильтры + scope */
 function applyFilters(){
   const mp = document.getElementById('f-market').value;
   const st = document.getElementById('f-stage').value;
   const q  = document.getElementById('f-q').value.trim().toLowerCase();
   state.filtered = state.list.filter(x=>{
+    if (state.scope === 'active' && x.archived) return false;
+    if (state.scope === 'archived' && !x.archived) return false;
     if (mp && x.marketplace !== mp) return false;
     if (st && x.status !== st) return false;
     if (q) {
@@ -437,8 +500,18 @@ async function boot(){
   }
 }
 
+/* события */
 ['f-market','f-stage','f-q'].forEach(id=>{
   document.getElementById(id).addEventListener('input', applyFilters);
+});
+
+document.querySelectorAll('.scope-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.scope-btn').forEach(b=>b.classList.remove('scope-active'));
+    btn.classList.add('scope-active');
+    state.scope = btn.dataset.scope; // active | archived | all
+    applyFilters();
+  });
 });
 
 boot();
