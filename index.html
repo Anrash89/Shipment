@@ -131,7 +131,7 @@
           </div>
           <div>
             <label class="block text-sm mb-1">Номер поставки</label>
-            <input id="supplyNumber" class="w-full border rounded p-2" placeholder="Например: WB-GI-* или внутренний номер" />
+            <input id="supplyNumber" class="w-full border rounded p-2" placeholder="WB-GI-* или внутренний номер" />
           </div>
           <div>
             <label class="block text-sm mb-1">Вес (кг)</label>
@@ -318,7 +318,6 @@ function renderCards(){
     const div = document.createElement('div');
     div.className = `card rounded-xl shadow p-3 ${mpClass(item.marketplace)} ${stageClass(item.status)}`;
 
-    // что показываем рядом с названием склада:
     const headerSupply = item.supplyNumber || item.supplyCode || '';
 
     const top = document.createElement('div');
@@ -342,10 +341,8 @@ function renderCards(){
         ${chips.map(([l,ok])=>chip(l,ok,item.status)).join('')}
       </div>
       <div class="mt-2 progress" title="Заполнено ${pct}%"><span style="width:${pct}%"></span></div>
-      <div class="mt-2">
-        <span class="text-slate-500">Поставка:</span> ${item.supplyNumber||'-'}
-        <span class="text-slate-500 ml-2">ШК поставки:</span> ${item.supplyCode||'-'}
-      </div>
+      <div><span class="text-slate-500">№ поставки:</span> ${item.supplyNumber||'-'}</div>
+      <div><span class="text-slate-500">ШК поставки:</span> ${item.supplyCode||'-'}</div>
       <div><span class="text-slate-500">Позиции:</span> ${item.items?.length||0}</div>
       <ul class="list-disc pl-5">${listItems}</ul>
       <div><span class="text-slate-500">Вес / Объём:</span> ${item.weight||'-'} кг / ${item.volume||'-'} м³</div>
@@ -388,8 +385,11 @@ function renderCards(){
       }
     };
 
-    btns.appendChild(bEdit); btns.appendChild(bShip);
-    div.appendChild(top); div.appendChild(mid); div.appendChild(btns);
+    btns.appendChild(bEdit);
+    btns.appendChild(bShip);
+    div.appendChild(top);
+    div.appendChild(mid);
+    div.appendChild(btns);
     wrap.appendChild(div);
   });
 }
