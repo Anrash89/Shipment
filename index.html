@@ -74,7 +74,7 @@
   <div class="max-w-6xl mx-auto p-4">
     <h1 class="text-2xl font-bold mb-2">Поставки — WB / OZON</h1>
 
-    <!-- Вкладки по архиву -->
+    <!-- Вкладки: активные / архив / все -->
     <div class="flex gap-2 mb-4">
       <button class="scope-btn scope-active" data-scope="active">Активные</button>
       <button class="scope-btn" data-scope="archived">Архив</button>
@@ -232,6 +232,30 @@ function fillRefs(refs){
   Object.keys(refs.dict).forEach(a=>{ const o=document.createElement('option'); o.value=a; dl.appendChild(o); });
 }
 
+/* автозаполнение стартовых ШК вниз по списку */
+function autoFillStartCodesFrom(rowEl){
+  const rows = Array.from(document.querySelectorAll('#items .row'));
+  const idx = rows.indexOf(rowEl);
+  if (idx === -1) return;
+  const input = rowEl.querySelector('.s');
+  const base = parseInt(input.value.trim(), 10);
+  if (!Number.isFinite(base)) return;
+
+  let current = base;
+  for (let i = idx + 1; i < rows.length; i++) {
+    const sInput = rows[i].querySelector('.s');
+    const val = sInput.value.trim();
+    if (val) {
+      // если уже что-то введено вручную — не трогаем, но смещаем "current"
+      const num = parseInt(val, 10);
+      current = Number.isFinite(num) ? num : current + 1;
+    } else {
+      current += 1;
+      sInput.value = current;
+    }
+  }
+}
+
 /* positions */
 function addItemRow(item={}){
   const wrap = document.getElementById('items');
@@ -252,6 +276,7 @@ function addItemRow(item={}){
     }
   });
   row.querySelector('.del').addEventListener('click', ()=> row.remove());
+  row.querySelector('.s').addEventListener('change', ()=> autoFillStartCodesFrom(row));
   wrap.appendChild(row);
 }
 document.getElementById('addItem').addEventListener('click', ()=> addItemRow());
@@ -303,7 +328,7 @@ document.getElementById('ship-form').addEventListener('submit', async (e)=>{
   }
 });
 
-/* chips & cards */
+/* chips & cards / архив */
 function chip(label, ok, stage){
   const stageClass =
     stage === 'Собрано' ? 'chip-stage-packed' :
@@ -333,18 +358,15 @@ function renderSkeleton(n=6){
     wrap.appendChild(div);
   }
 }
-
 async function setArchived(id, flag){
   await apiPost({ op:'setArchived', id, archived: !!flag });
 }
 
-/* отрисовка */
 function renderCards(){
   const wrap = document.getElementById('cards'); wrap.innerHTML='';
   state.filtered.forEach(item=>{
     const {chips, pct} = indicatorsFromItems(item.items || []);
     const div = document.createElement('div');
-    // для архивных чуть притушим
     const archivedClass = item.archived ? 'opacity-80' : '';
     div.className = `card rounded-xl shadow p-3 ${mpClass(item.marketplace)} ${stageClass(item.status)} ${archivedClass}`;
 
@@ -500,7 +522,7 @@ async function boot(){
   }
 }
 
-/* события */
+/* события фильтров и вкладок */
 ['f-market','f-stage','f-q'].forEach(id=>{
   document.getElementById(id).addEventListener('input', applyFilters);
 });
