@@ -14,7 +14,8 @@
 
     .card {
       border-width: 2px;
-      transition: background-color .15s ease, box-shadow .15s ease, transform .15s ease;
+      transition: background-color .18s ease, box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+      cursor: default;
     }
     .card:hover {
       transform: translateY(-1px);
@@ -23,16 +24,16 @@
 
     .mp-wb {
       border-color: #8f7aff;
-      box-shadow: 0 0 0 1px rgba(143,122,255,.18);
+      box-shadow: 0 0 0 1px rgba(143,122,255,.14);
     }
     .mp-ozon {
       border-color: #4a9af7;
-      box-shadow: 0 0 0 1px rgba(74,154,247,.18);
+      box-shadow: 0 0 0 1px rgba(74,154,247,.14);
     }
 
     .stage-process { background: #ffffff !important; }
-    .stage-packed  { background: #fff7d6 !important; }
-    .stage-inroute { background: #e8ffe8 !important; }
+    .stage-packed  { background: #fefce8 !important; }
+    .stage-inroute { background: #ecfdf5 !important; }
 
     .chip {
       display: inline-flex;
@@ -49,7 +50,7 @@
       height: 14px;
     }
     .chip-stage-process { background: #ffffff; color: #4b5563; }
-    .chip-stage-packed  { background: #fff3bf; color: #92400e; border-color: #fbbf24; }
+    .chip-stage-packed  { background: #fff7d6; color: #92400e; border-color: #fbbf24; }
     .chip-stage-inroute { background: #bbf7d0; color: #065f46; border-color: #22c55e; }
     .chip.dim { opacity: .55; filter: saturate(.7); }
 
@@ -175,6 +176,19 @@
     .mix-item button {
       font-size: 9px;
     }
+
+    .card-toggle {
+      cursor: pointer;
+      user-select: none;
+    }
+    .chevron {
+      width: 14px;
+      height: 14px;
+      transition: transform .18s ease;
+    }
+    .chevron-open {
+      transform: rotate(90deg);
+    }
   </style>
 </head>
 <body>
@@ -259,7 +273,7 @@
         <div class="text-[10px] text-slate-500 mb-2">
           Для каждой позиции можно указать стартовый ШК короба — будут сгенерированы WB_XXXX… на N коробок.
           Стартовый ШК идёт сквозняком по всем позициям. Галочка «Сборный» помечает строку как сборный короб и
-          открывает состав (внешний артикул/баркод/кол-во при этом остаются и учитываются на приёмке).
+          открывает состав; внешние артикул/баркод/кол-во при этом остаются и учитываются на приёмке.
         </div>
         <div id="items"></div>
       </div>
@@ -422,7 +436,7 @@
       '<button type="button" class="mix-add px-2 py-0.5 border rounded text-[9px]">+ Артикул</button>' +
       '</div>' +
       '<div class="mix-items"></div>' +
-      '<div class="mix-hint">Внешний артикул/баркод этой строки — для WB. Ниже фиксируем, что положили внутрь.</div>';
+      '<div class="mix-hint">Внешний артикул/баркод строки — для учёта. Здесь фиксируем, что положили внутрь.</div>';
 
     const addBtn = block.querySelector('.mix-add');
     addBtn.onclick = () => addMixItem(block);
@@ -666,7 +680,7 @@
     for (let i = 0; i < count; i++) {
       const d = document.createElement('div');
       d.className = 'card rounded-xl p-3 skeleton';
-      d.style.height = '180px';
+      d.style.height = '120px';
       wrap.appendChild(d);
     }
   }
@@ -677,33 +691,57 @@
 
     state.filtered.forEach(item => {
       const ind = indicatorsFromItems(item.items || []);
-      const headerSupply = item.supplyNumber || item.supplyCode || '';
-      const archivedClass = item.archived ? 'opacity-80' : '';
+      const headerSupply = item.supplyNumber || item.supplyCode || '-';
+      const archivedClass = item.archived ? 'opacity-75' : '';
 
       const card = document.createElement('div');
       card.className =
-        'card rounded-xl shadow p-3 ' +
+        'card rounded-xl shadow-sm p-3 ' +
         mpClass(item.marketplace) +
         ' ' +
         stageClass(item.status) +
         ' ' +
         archivedClass;
 
+      // === Свернутая шапка ===
       const top = document.createElement('div');
-      top.className = 'flex items-center justify-between gap-2 mb-2';
-      top.innerHTML =
-        '<div class="font-semibold text-sm">' +
+      top.className = 'card-toggle flex items-center gap-2';
+
+      const title = document.createElement('div');
+      title.className = 'flex-1';
+      title.innerHTML =
+        '<div class="text-xs font-semibold">' +
         (item.marketplace || '') +
-        ' · ' +
-        (item.warehouse || '') +
-        (headerSupply ? ' · ' + headerSupply : '') +
+        (item.warehouse ? ' · ' + item.warehouse : '') +
         '</div>' +
-        '<div class="text-[10px] text-slate-500">Создано: ' +
-        (item.created || '-') +
+        '<div class="text-[10px] text-slate-600">№ ' +
+        headerSupply +
         '</div>';
 
+      const statusLabel = document.createElement('div');
+      statusLabel.className =
+        'px-2 py-0.5 rounded-full text-[9px] border border-emerald-500 text-emerald-700 bg-emerald-50';
+      statusLabel.textContent = item.status || '-';
+
+      const chev = document.createElement('div');
+      chev.innerHTML =
+        '<svg class="chevron" viewBox="0 0 20 20" fill="none"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+      top.appendChild(title);
+      top.appendChild(statusLabel);
+      top.appendChild(chev);
+
+      const prog = document.createElement('div');
+      prog.className = 'mt-2 progress';
+      prog.innerHTML =
+        '<span style="width:' + ind.pct + '%"></span>';
+
+      // === Детальная часть ===
+      const details = document.createElement('div');
+      details.className = 'mt-2 text-xs space-y-1 hidden';
+
       const listItems = (item.items || [])
-        .slice(0, 5)
+        .slice(0, 50)
         .map(it => {
           let line =
             (it.article || '-') +
@@ -719,31 +757,16 @@
               .map(mi => mi.article + ' x' + mi.qty)
               .join(', ');
             line +=
-              ' <span class="text-[9px] text-purple-700">(сборный: ' +
-              inner +
-              ')</span>';
+              ' (сборный: ' + inner + ')';
           }
           return '<li>' + line + '</li>';
         })
         .join('');
 
-      const mid = document.createElement('div');
-      mid.className = 'text-xs space-y-1';
-      mid.innerHTML =
-        '<div><span class="text-slate-500">Статус:</span> ' +
-        (item.status || '-') +
-        '</div>' +
-        (item.archived
-          ? '<div class="text-[10px] font-semibold text-rose-600">В архиве</div>'
-          : '') +
-        '<div class="flex flex-wrap gap-1 mt-1">' +
+      details.innerHTML =
+        '<div class="flex flex-wrap gap-1">' +
         ind.chips.map(([l, ok]) => chip(l, ok, item.status)).join('') +
         '</div>' +
-        '<div class="mt-2 progress" title="Заполнено ' +
-        ind.pct +
-        '%"><span style="width:' +
-        ind.pct +
-        '%"></span></div>' +
         '<div><span class="text-slate-500">№ поставки:</span> ' +
         (item.supplyNumber || '-') +
         '</div>' +
@@ -753,9 +776,9 @@
         '<div><span class="text-slate-500">Позиции:</span> ' +
         ((item.items && item.items.length) || 0) +
         '</div>' +
-        '<ul class="list-disc pl-4 space-y-0.5">' +
-        listItems +
-        '</ul>' +
+        (listItems
+          ? '<ul class="list-disc pl-4 space-y-0.5">' + listItems + '</ul>'
+          : '') +
         '<div><span class="text-slate-500">Вес / Объём:</span> ' +
         (item.weight || '-') +
         ' кг / ' +
@@ -766,17 +789,22 @@
         ' / ' +
         (item.shipped || '-') +
         '</div>' +
+        (item.archived
+          ? '<div class="text-[10px] font-semibold text-rose-600">В архиве</div>'
+          : '') +
         '<div class="text-[9px] text-slate-400">ID: ' +
         (item.id || '-') +
         '</div>';
 
+      // Кнопки только в раскрытом виде
       const btns = document.createElement('div');
-      btns.className = 'flex flex-wrap gap-2 mt-3';
+      btns.className = 'flex flex-wrap gap-2 mt-2';
 
       const bEdit = document.createElement('button');
-      bEdit.className = 'px-3 py-1 rounded border text-xs';
+      bEdit.className = 'px-3 py-1 rounded border text-xs bg-white';
       bEdit.textContent = 'Редактировать';
-      bEdit.onclick = () => {
+      bEdit.onclick = e => {
+        e.stopPropagation();
         document.getElementById('id').value = item.id;
         document.getElementById('marketplace').value =
           item.marketplace || 'WB';
@@ -805,7 +833,8 @@
         'relative px-3 py-1 rounded bg-emerald-600 text-white text-xs';
       bShip.innerHTML =
         '<span class="btn-text">Отправлен</span><span class="btn-spinner spinner hidden"></span>';
-      bShip.onclick = async () => {
+      bShip.onclick = async e => {
+        e.stopPropagation();
         if (!confirm('Отметить поставку как отправленную?')) return;
         const ttn = prompt(
           'Введите/уточните номер ТТН (можно оставить пустым):',
@@ -834,9 +863,10 @@
       if (!item.archived) {
         const bArch = document.createElement('button');
         bArch.className =
-          'px-3 py-1 rounded border border-slate-300 text-slate-500 text-xs';
+          'px-3 py-1 rounded border border-slate-300 text-slate-500 text-xs bg-white';
         bArch.textContent = 'В архив';
-        bArch.onclick = async () => {
+        bArch.onclick = async e => {
+          e.stopPropagation();
           if (!confirm('Отправить поставку в архив?')) return;
           try {
             showPageLoader(true);
@@ -852,9 +882,10 @@
       } else {
         const bUn = document.createElement('button');
         bUn.className =
-          'px-3 py-1 rounded border border-amber-500 text-amber-600 text-xs';
+          'px-3 py-1 rounded border border-amber-500 text-amber-600 text-xs bg-white';
         bUn.textContent = 'Вернуть';
-        bUn.onclick = async () => {
+        bUn.onclick = async e => {
+          e.stopPropagation();
           try {
             showPageLoader(true);
             await setArchived(item.id, false);
@@ -868,9 +899,22 @@
         btns.appendChild(bUn);
       }
 
+      details.appendChild(btns);
+
+      // Тоггл
+      top.addEventListener('click', () => {
+        const isHidden = details.classList.contains('hidden');
+        details.classList.toggle('hidden', !isHidden);
+        chev.firstElementChild &&
+          chev.firstElementChild.classList &&
+          chev.firstElementChild.classList.toggle('chevron-open', isHidden);
+        const svg = chev.querySelector('.chevron');
+        if (svg) svg.classList.toggle('chevron-open', isHidden);
+      });
+
       card.appendChild(top);
-      card.appendChild(mid);
-      card.appendChild(btns);
+      card.appendChild(prog);
+      card.appendChild(details);
       wrap.appendChild(card);
     });
   }
