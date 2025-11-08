@@ -15,7 +15,7 @@
     .card {
       border-width: 2px;
       transition: background-color .18s ease, box-shadow .18s ease, transform .18s ease, border-color .18s ease;
-      cursor: default;
+      cursor: pointer;
     }
     .card:hover {
       transform: translateY(-1px);
@@ -24,15 +24,15 @@
 
     .mp-wb {
       border-color: #8f7aff;
-      box-shadow: 0 0 0 1px rgba(143,122,255,.14);
+      box-shadow: 0 0 0 1px rgba(143,122,255,.12);
     }
     .mp-ozon {
       border-color: #4a9af7;
-      box-shadow: 0 0 0 1px rgba(74,154,247,.14);
+      box-shadow: 0 0 0 1px rgba(74,154,247,.12);
     }
 
     .stage-process { background: #ffffff !important; }
-    .stage-packed  { background: #fefce8 !important; }
+    .stage-packed  { background: #fffbeb !important; }
     .stage-inroute { background: #ecfdf5 !important; }
 
     .chip {
@@ -177,17 +177,18 @@
       font-size: 9px;
     }
 
-    .card-toggle {
-      cursor: pointer;
-      user-select: none;
-    }
     .chevron {
       width: 14px;
       height: 14px;
       transition: transform .18s ease;
     }
-    .chevron-open {
-      transform: rotate(90deg);
+    .card-selected {
+      box-shadow: 0 0 0 2px rgba(129,140,248,.9) !important;
+    }
+
+    /* Панель деталей */
+    #detailsPanel {
+      backdrop-filter: blur(6px);
     }
   </style>
 </head>
@@ -273,7 +274,7 @@
         <div class="text-[10px] text-slate-500 mb-2">
           Для каждой позиции можно указать стартовый ШК короба — будут сгенерированы WB_XXXX… на N коробок.
           Стартовый ШК идёт сквозняком по всем позициям. Галочка «Сборный» помечает строку как сборный короб и
-          открывает состав; внешние артикул/баркод/кол-во при этом остаются и учитываются на приёмке.
+          открывает состав; внешние артикул/баркод/кол-во остаются и учитываются на приёмке.
         </div>
         <div id="items"></div>
       </div>
@@ -314,8 +315,12 @@
     </form>
   </div>
 
-  <!-- Карточки -->
-  <div id="cards" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  <!-- Карточки: до 6 в ряд на широких -->
+  <div id="cards" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3"></div>
+</div>
+
+<!-- Панель деталей (отдельно от карточек) -->
+<div id="detailsPanel" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 w-[min(1100px,100%-24px)] max-h-[70vh] bg-white border border-slate-200 shadow-2xl rounded-2xl p-4 z-40 overflow-y-auto">
 </div>
 
 <script>
@@ -436,7 +441,7 @@
       '<button type="button" class="mix-add px-2 py-0.5 border rounded text-[9px]">+ Артикул</button>' +
       '</div>' +
       '<div class="mix-items"></div>' +
-      '<div class="mix-hint">Внешний артикул/баркод строки — для учёта. Здесь фиксируем, что положили внутрь.</div>';
+      '<div class="mix-hint">Внешний артикул/баркод строки — для учёта. Ниже фиксируем вложенные.</div>';
 
     const addBtn = block.querySelector('.mix-add');
     addBtn.onclick = () => addMixItem(block);
@@ -637,7 +642,7 @@
     }
   });
 
-  // ===== Карточки и архив =====
+  // ===== Индикация заполненности =====
   function chip(label, ok, stage) {
     let stClass = 'chip-stage-process';
     if (stage === 'Собрано') stClass = 'chip-stage-packed';
@@ -673,14 +678,234 @@
     await apiPost({ op: 'setArchived', id, archived: !!flag });
   }
 
+  // ===== Панель деталей =====
+  function closeDetails() {
+    const panel = document.getElementById('detailsPanel');
+    panel.classList.add('hidden');
+    panel.innerHTML = '';
+    document.querySelectorAll('#cards .card').forEach(c => c.classList.remove('card-selected'));
+  }
+
+  function openDetails(item, cardEl) {
+    const panel = document.getElementById('detailsPanel');
+
+    document.querySelectorAll('#cards .card').forEach(c => c.classList.remove('card-selected'));
+    if (cardEl) cardEl.classList.add('card-selected');
+
+    const ind = indicatorsFromItems(item.items || []);
+    const listItems = (item.items || [])
+      .map(it => {
+        let line =
+          (it.article || '-') +
+          ' / ' +
+          (it.barcode || '-') +
+          ' — ' +
+          (it.unitsPerBox || '-') +
+          ' ед × ' +
+          (it.boxes || '-') +
+          ' кор.';
+        if (it.isMixed && it.mixItems && it.mixItems.length) {
+          const inner = it.mixItems
+            .map(mi => mi.article + ' x' + mi.qty)
+            .join(', ');
+          line += ' (сборный: ' + inner + ')';
+        }
+        return '<li>' + line + '</li>';
+      })
+      .join('');
+
+    panel.innerHTML = '';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'absolute top-2 right-3 text-slate-400 hover:text-slate-700 text-lg';
+    closeBtn.innerHTML = '×';
+    closeBtn.onclick = closeDetails;
+
+    const head = document.createElement('div');
+    head.className = 'mb-2';
+    head.innerHTML =
+      '<div class="text-xs font-semibold mb-0.5">' +
+      (item.marketplace || '') +
+      (item.warehouse ? ' · ' + item.warehouse : '') +
+      '</div>' +
+      '<div class="text-[10px] text-slate-600 mb-0.5">№ поставки: ' +
+      (item.supplyNumber || '-') +
+      '</div>' +
+      '<div class="text-[10px] text-slate-600 mb-0.5">ШК поставки: ' +
+      (item.supplyCode || '-') +
+      '</div>' +
+      '<div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] border ' +
+      (item.status === 'В пути'
+        ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
+        : item.status === 'Собрано'
+        ? 'border-amber-400 text-amber-700 bg-amber-50'
+        : 'border-slate-300 text-slate-700 bg-slate-50') +
+      '">Статус: ' +
+      (item.status || '-') +
+      '</div>';
+
+    const chipsDiv = document.createElement('div');
+    chipsDiv.className = 'mt-2 flex flex-wrap gap-1';
+    chipsDiv.innerHTML = ind.chips.map(([l, ok]) => chip(l, ok, item.status)).join('');
+
+    const prog = document.createElement('div');
+    prog.className = 'mt-2 progress';
+    prog.innerHTML = '<span style="width:' + ind.pct + '%"></span>';
+
+    const body = document.createElement('div');
+    body.className = 'mt-2 text-xs space-y-1';
+    body.innerHTML =
+      '<div><span class="text-slate-500">Склад:</span> ' +
+      (item.warehouse || '-') +
+      '</div>' +
+      '<div><span class="text-slate-500">Вес / Объём:</span> ' +
+      (item.weight || '-') +
+      ' кг / ' +
+      (item.volume || '-') +
+      ' м³</div>' +
+      '<div><span class="text-slate-500">ТТН / Отправлен:</span> ' +
+      (item.ttn || '-') +
+      ' / ' +
+      (item.shipped || '-') +
+      '</div>' +
+      '<div><span class="text-slate-500">Создано:</span> ' +
+      (item.created || '-') +
+      '</div>' +
+      '<div><span class="text-slate-500">Позиции:</span> ' +
+      ((item.items && item.items.length) || 0) +
+      '</div>' +
+      (listItems
+        ? '<ul class="list-disc pl-4 space-y-0.5">' + listItems + '</ul>'
+        : '<div class="text-[10px] text-slate-500">Позиции не указаны</div>') +
+      '<div class="text-[9px] text-slate-400">ID: ' +
+      (item.id || '-') +
+      '</div>' +
+      (item.archived
+        ? '<div class="text-[10px] font-semibold text-rose-600">В архиве</div>'
+        : '');
+
+    const btns = document.createElement('div');
+    btns.className = 'flex flex-wrap gap-2 mt-3';
+
+    const bEdit = document.createElement('button');
+    bEdit.className = 'px-3 py-1 rounded border text-xs bg-white';
+    bEdit.textContent = 'Редактировать';
+    bEdit.onclick = () => {
+      document.getElementById('id').value = item.id;
+      document.getElementById('marketplace').value = item.marketplace || 'WB';
+      document.getElementById('warehouse').value = item.warehouse || '';
+      document.getElementById('status').value = item.status || 'В процессе';
+      document.getElementById('supplyCode').value = item.supplyCode || '';
+      document.getElementById('supplyNumber').value = item.supplyNumber || '';
+      document.getElementById('weight').value = item.weight || '';
+      document.getElementById('volume').value = item.volume || '';
+      document.getElementById('ttn').value = item.ttn || '';
+
+      const holder = document.getElementById('items');
+      holder.innerHTML = '';
+      (item.items && item.items.length ? item.items : [{}]).forEach(it =>
+        addItemRow(it)
+      );
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      closeDetails();
+    };
+
+    const bShip = document.createElement('button');
+    bShip.className =
+      'relative px-3 py-1 rounded bg-emerald-600 text-white text-xs';
+    bShip.innerHTML =
+      '<span class="btn-text">Отправлен</span><span class="btn-spinner spinner hidden"></span>';
+    bShip.onclick = async () => {
+      if (!confirm('Отметить поставку как отправленную?')) return;
+      const ttn = prompt(
+        'Введите/уточните номер ТТН (можно оставить пустым):',
+        item.ttn || ''
+      );
+      try {
+        setBtnLoading(bShip, true);
+        showPageLoader(true);
+        await apiPost({
+          op: 'markShipped',
+          id: item.id,
+          ttn: ttn || ''
+        });
+        await reloadList(true);
+        closeDetails();
+      } catch (err) {
+        alert('Ошибка: ' + err.message);
+      } finally {
+        setBtnLoading(bShip, false);
+        showPageLoader(false);
+      }
+    };
+
+    btns.appendChild(bEdit);
+    btns.appendChild(bShip);
+
+    if (!item.archived) {
+      const bArch = document.createElement('button');
+      bArch.className =
+        'px-3 py-1 rounded border border-slate-300 text-slate-500 text-xs bg-white';
+      bArch.textContent = 'В архив';
+      bArch.onclick = async () => {
+        if (!confirm('Отправить поставку в архив?')) return;
+        try {
+          showPageLoader(true);
+          await setArchived(item.id, true);
+          await reloadList(true);
+          closeDetails();
+        } catch (err) {
+          alert('Ошибка: ' + err.message);
+        } finally {
+          showPageLoader(false);
+        }
+      };
+      btns.appendChild(bArch);
+    } else {
+      const bUn = document.createElement('button');
+      bUn.className =
+        'px-3 py-1 rounded border border-amber-500 text-amber-600 text-xs bg-white';
+      bUn.textContent = 'Вернуть';
+      bUn.onclick = async () => {
+        try {
+          showPageLoader(true);
+          await setArchived(item.id, false);
+          await reloadList(true);
+          closeDetails();
+        } catch (err) {
+          alert('Ошибка: ' + err.message);
+        } finally {
+          showPageLoader(false);
+        }
+      };
+      btns.appendChild(bUn);
+    }
+
+    panel.appendChild(closeBtn);
+    panel.appendChild(head);
+    panel.appendChild(chipsDiv);
+    panel.appendChild(prog);
+    panel.appendChild(body);
+    panel.appendChild(btns);
+
+    panel.classList.remove('hidden');
+  }
+
+  // Закрытие панели по клику вне (по фону снизу не будем, только крестик / ESC)
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeDetails();
+  });
+
+  // ===== Рендер карточек (мини) =====
   function renderSkeleton(n) {
     const wrap = document.getElementById('cards');
     wrap.innerHTML = '';
-    const count = n || 6;
+    const count = n || 12;
     for (let i = 0; i < count; i++) {
       const d = document.createElement('div');
       d.className = 'card rounded-xl p-3 skeleton';
-      d.style.height = '120px';
+      d.style.height = '64px';
       wrap.appendChild(d);
     }
   }
@@ -688,233 +913,60 @@
   function renderCards() {
     const wrap = document.getElementById('cards');
     wrap.innerHTML = '';
+    closeDetails();
 
     state.filtered.forEach(item => {
       const ind = indicatorsFromItems(item.items || []);
-      const headerSupply = item.supplyNumber || item.supplyCode || '-';
-      const archivedClass = item.archived ? 'opacity-75' : '';
-
+      const headerSupply = item.supplyNumber || '-';
       const card = document.createElement('div');
       card.className =
-        'card rounded-xl shadow-sm p-3 ' +
+        'card rounded-xl px-3 py-2 flex flex-col justify-between ' +
         mpClass(item.marketplace) +
         ' ' +
         stageClass(item.status) +
-        ' ' +
-        archivedClass;
+        (item.archived ? ' opacity-70' : '');
 
-      // === Свернутая шапка ===
       const top = document.createElement('div');
-      top.className = 'card-toggle flex items-center gap-2';
-
-      const title = document.createElement('div');
-      title.className = 'flex-1';
-      title.innerHTML =
-        '<div class="text-xs font-semibold">' +
+      top.className = 'flex items-center gap-1';
+      top.innerHTML =
+        '<div class="flex-1">' +
+        '<div class="text-[10px] font-semibold truncate">' +
         (item.marketplace || '') +
         (item.warehouse ? ' · ' + item.warehouse : '') +
         '</div>' +
-        '<div class="text-[10px] text-slate-600">№ ' +
+        '<div class="text-[9px] text-slate-700">№ ' +
         headerSupply +
+        '</div>' +
         '</div>';
 
       const statusLabel = document.createElement('div');
       statusLabel.className =
-        'px-2 py-0.5 rounded-full text-[9px] border border-emerald-500 text-emerald-700 bg-emerald-50';
+        'px-2 py-0.5 rounded-full text-[8px] whitespace-nowrap border ' +
+        (item.status === 'В пути'
+          ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
+          : item.status === 'Собрано'
+          ? 'border-amber-400 text-amber-700 bg-amber-50'
+          : 'border-slate-300 text-slate-700 bg-slate-50');
       statusLabel.textContent = item.status || '-';
 
       const chev = document.createElement('div');
       chev.innerHTML =
         '<svg class="chevron" viewBox="0 0 20 20" fill="none"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-      top.appendChild(title);
       top.appendChild(statusLabel);
       top.appendChild(chev);
 
       const prog = document.createElement('div');
-      prog.className = 'mt-2 progress';
-      prog.innerHTML =
-        '<span style="width:' + ind.pct + '%"></span>';
-
-      // === Детальная часть ===
-      const details = document.createElement('div');
-      details.className = 'mt-2 text-xs space-y-1 hidden';
-
-      const listItems = (item.items || [])
-        .slice(0, 50)
-        .map(it => {
-          let line =
-            (it.article || '-') +
-            ' / ' +
-            (it.barcode || '-') +
-            ' — ' +
-            (it.unitsPerBox || '-') +
-            ' ед × ' +
-            (it.boxes || '-') +
-            ' кор.';
-          if (it.isMixed && it.mixItems && it.mixItems.length) {
-            const inner = it.mixItems
-              .map(mi => mi.article + ' x' + mi.qty)
-              .join(', ');
-            line +=
-              ' (сборный: ' + inner + ')';
-          }
-          return '<li>' + line + '</li>';
-        })
-        .join('');
-
-      details.innerHTML =
-        '<div class="flex flex-wrap gap-1">' +
-        ind.chips.map(([l, ok]) => chip(l, ok, item.status)).join('') +
-        '</div>' +
-        '<div><span class="text-slate-500">№ поставки:</span> ' +
-        (item.supplyNumber || '-') +
-        '</div>' +
-        '<div><span class="text-slate-500">ШК поставки:</span> ' +
-        (item.supplyCode || '-') +
-        '</div>' +
-        '<div><span class="text-slate-500">Позиции:</span> ' +
-        ((item.items && item.items.length) || 0) +
-        '</div>' +
-        (listItems
-          ? '<ul class="list-disc pl-4 space-y-0.5">' + listItems + '</ul>'
-          : '') +
-        '<div><span class="text-slate-500">Вес / Объём:</span> ' +
-        (item.weight || '-') +
-        ' кг / ' +
-        (item.volume || '-') +
-        ' м³</div>' +
-        '<div><span class="text-slate-500">ТТН / Отправлен:</span> ' +
-        (item.ttn || '-') +
-        ' / ' +
-        (item.shipped || '-') +
-        '</div>' +
-        (item.archived
-          ? '<div class="text-[10px] font-semibold text-rose-600">В архиве</div>'
-          : '') +
-        '<div class="text-[9px] text-slate-400">ID: ' +
-        (item.id || '-') +
-        '</div>';
-
-      // Кнопки только в раскрытом виде
-      const btns = document.createElement('div');
-      btns.className = 'flex flex-wrap gap-2 mt-2';
-
-      const bEdit = document.createElement('button');
-      bEdit.className = 'px-3 py-1 rounded border text-xs bg-white';
-      bEdit.textContent = 'Редактировать';
-      bEdit.onclick = e => {
-        e.stopPropagation();
-        document.getElementById('id').value = item.id;
-        document.getElementById('marketplace').value =
-          item.marketplace || 'WB';
-        document.getElementById('warehouse').value = item.warehouse || '';
-        document.getElementById('status').value =
-          item.status || 'В процессе';
-        document.getElementById('supplyCode').value =
-          item.supplyCode || '';
-        document.getElementById('supplyNumber').value =
-          item.supplyNumber || '';
-        document.getElementById('weight').value = item.weight || '';
-        document.getElementById('volume').value = item.volume || '';
-        document.getElementById('ttn').value = item.ttn || '';
-
-        const holder = document.getElementById('items');
-        holder.innerHTML = '';
-        (item.items && item.items.length ? item.items : [{}]).forEach(it =>
-          addItemRow(it)
-        );
-
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-
-      const bShip = document.createElement('button');
-      bShip.className =
-        'relative px-3 py-1 rounded bg-emerald-600 text-white text-xs';
-      bShip.innerHTML =
-        '<span class="btn-text">Отправлен</span><span class="btn-spinner spinner hidden"></span>';
-      bShip.onclick = async e => {
-        e.stopPropagation();
-        if (!confirm('Отметить поставку как отправленную?')) return;
-        const ttn = prompt(
-          'Введите/уточните номер ТТН (можно оставить пустым):',
-          item.ttn || ''
-        );
-        try {
-          setBtnLoading(bShip, true);
-          showPageLoader(true);
-          await apiPost({
-            op: 'markShipped',
-            id: item.id,
-            ttn: ttn || ''
-          });
-          await reloadList(true);
-        } catch (err) {
-          alert('Ошибка: ' + err.message);
-        } finally {
-          setBtnLoading(bShip, false);
-          showPageLoader(false);
-        }
-      };
-
-      btns.appendChild(bEdit);
-      btns.appendChild(bShip);
-
-      if (!item.archived) {
-        const bArch = document.createElement('button');
-        bArch.className =
-          'px-3 py-1 rounded border border-slate-300 text-slate-500 text-xs bg-white';
-        bArch.textContent = 'В архив';
-        bArch.onclick = async e => {
-          e.stopPropagation();
-          if (!confirm('Отправить поставку в архив?')) return;
-          try {
-            showPageLoader(true);
-            await setArchived(item.id, true);
-            await reloadList(true);
-          } catch (err) {
-            alert('Ошибка: ' + err.message);
-          } finally {
-            showPageLoader(false);
-          }
-        };
-        btns.appendChild(bArch);
-      } else {
-        const bUn = document.createElement('button');
-        bUn.className =
-          'px-3 py-1 rounded border border-amber-500 text-amber-600 text-xs bg-white';
-        bUn.textContent = 'Вернуть';
-        bUn.onclick = async e => {
-          e.stopPropagation();
-          try {
-            showPageLoader(true);
-            await setArchived(item.id, false);
-            await reloadList(true);
-          } catch (err) {
-            alert('Ошибка: ' + err.message);
-          } finally {
-            showPageLoader(false);
-          }
-        };
-        btns.appendChild(bUn);
-      }
-
-      details.appendChild(btns);
-
-      // Тоггл
-      top.addEventListener('click', () => {
-        const isHidden = details.classList.contains('hidden');
-        details.classList.toggle('hidden', !isHidden);
-        chev.firstElementChild &&
-          chev.firstElementChild.classList &&
-          chev.firstElementChild.classList.toggle('chevron-open', isHidden);
-        const svg = chev.querySelector('.chevron');
-        if (svg) svg.classList.toggle('chevron-open', isHidden);
-      });
+      prog.className = 'mt-1 progress';
+      prog.innerHTML = '<span style="width:' + ind.pct + '%"></span>';
 
       card.appendChild(top);
       card.appendChild(prog);
-      card.appendChild(details);
+
+      card.addEventListener('click', () => {
+        openDetails(item, card);
+      });
+
       wrap.appendChild(card);
     });
   }
@@ -955,7 +1007,7 @@
   }
 
   async function reloadList(force) {
-    renderSkeleton(6);
+    renderSkeleton(12);
     showPageLoader(true);
     try {
       const data = await apiGet('list', force ? { _ts: Date.now() } : null);
