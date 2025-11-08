@@ -16,6 +16,8 @@
       border-width: 2px;
       transition: background-color .18s ease, box-shadow .18s ease, transform .18s ease, border-color .18s ease;
       cursor: pointer;
+      overflow: hidden;      /* чтобы ничего не вылезало за границы */
+      min-width: 0;          /* важно для flex-внутри */
     }
     .card:hover {
       transform: translateY(-1px);
@@ -181,19 +183,19 @@
       width: 14px;
       height: 14px;
       transition: transform .18s ease;
+      flex-shrink: 0;
     }
+
     .card-selected {
       box-shadow: 0 0 0 2px rgba(129,140,248,.9) !important;
     }
 
-    /* Панель деталей */
     #detailsPanel {
       backdrop-filter: blur(6px);
     }
   </style>
 </head>
 <body>
-<!-- Оверлей загрузки -->
 <div id="pageLoading" class="fixed inset-0 bg-black/5 backdrop-blur-sm z-50 items-center justify-center">
   <div class="bg-white rounded-lg px-4 py-3 shadow flex items-center gap-2 text-sm">
     <span class="spinner"></span>
@@ -204,14 +206,12 @@
 <div class="max-w-6xl mx-auto p-4">
   <h1 class="text-2xl font-bold mb-2">Поставки — WB / OZON</h1>
 
-  <!-- Вкладки -->
   <div class="flex gap-2 mb-4">
     <button class="scope-btn scope-active" data-scope="active">Активные</button>
     <button class="scope-btn" data-scope="archived">Архив</button>
     <button class="scope-btn" data-scope="all">Все</button>
   </div>
 
-  <!-- Фильтры -->
   <div class="grid md:grid-cols-4 gap-3 mb-4 items-end">
     <div>
       <label class="block text-xs mb-1 text-slate-500">Фильтр по маркетплейсу</label>
@@ -236,7 +236,6 @@
     </div>
   </div>
 
-  <!-- Форма -->
   <div class="bg-white rounded-xl shadow p-4 mb-6">
     <h2 class="text-lg font-semibold mb-3">Создать / Редактировать поставку</h2>
 
@@ -265,7 +264,6 @@
         </div>
       </div>
 
-      <!-- Позиции -->
       <div class="mt-2">
         <div class="flex items-center justify-between mb-2">
           <div class="font-medium text-sm">Позиции (несколько артикулов)</div>
@@ -279,7 +277,6 @@
         <div id="items"></div>
       </div>
 
-      <!-- Общие параметры -->
       <div class="grid md:grid-cols-3 gap-3 mt-2">
         <div>
           <label class="block text-xs mb-1 text-slate-500">ШК поставки (WB-GI-...)</label>
@@ -308,576 +305,383 @@
           <span class="btn-text">Сохранить</span>
           <span class="btn-spinner spinner hidden"></span>
         </button>
-        <button id="resetBtn" type="button" class="px-4 py-2 rounded border text-sm">
-          Очистить форму
-        </button>
+        <button id="resetBtn" type="button" class="px-4 py-2 rounded border text-sm">Очистить форму</button>
       </div>
     </form>
   </div>
 
-  <!-- Карточки: до 6 в ряд на широких -->
+  <!-- до 6 в ряд -->
   <div id="cards" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3"></div>
 </div>
 
-<!-- Панель деталей (отдельно от карточек) -->
-<div id="detailsPanel" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 w-[min(1100px,100%-24px)] max-h-[70vh] bg-white border border-slate-200 shadow-2xl rounded-2xl p-4 z-40 overflow-y-auto">
-</div>
+<div id="detailsPanel" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 w-[min(1100px,100%-24px)] max-h-[70vh] bg-white border border-slate-200 shadow-2xl rounded-2xl p-4 z-40 overflow-y-auto"></div>
 
 <script>
   const GAS_ENDPOINT = 'https://billowing-wildflower-c0ad.topsith89.workers.dev';
+  const state = { refs:null, list:[], filtered:[], scope:'active' };
 
-  const state = {
-    refs: null,
-    list: [],
-    filtered: [],
-    scope: 'active'
-  };
-
-  function mpClass(mp) {
-    return mp === 'OZON' ? 'mp-ozon' : 'mp-wb';
+  function mpClass(mp){ return mp === 'OZON' ? 'mp-ozon' : 'mp-wb'; }
+  function stageClass(s){
+    s=(s||'').toLowerCase();
+    if(s==='собрано')return'stage-packed';
+    if(s==='в пути')return'stage-inroute';
+    return'stage-process';
   }
 
-  function stageClass(s) {
-    s = (s || '').toLowerCase();
-    if (s === 'собрано') return 'stage-packed';
-    if (s === 'в пути') return 'stage-inroute';
-    return 'stage-process';
+  const pageLoader=document.getElementById('pageLoading');
+  function showPageLoader(on){pageLoader.classList.toggle('show',!!on);}
+  function setBtnLoading(btn,on){
+    if(!btn)return;
+    const sp=btn.querySelector('.btn-spinner');
+    if(on){btn.classList.add('btn-loading');btn.disabled=true;sp&&sp.classList.remove('hidden');}
+    else{btn.classList.remove('btn-loading');btn.disabled=false;sp&&sp.classList.add('hidden');}
   }
 
-  const pageLoader = document.getElementById('pageLoading');
-  function showPageLoader(on) {
-    pageLoader.classList.toggle('show', !!on);
+  async function apiGet(action,params){
+    const usp=new URLSearchParams(Object.assign({action},params||{}));
+    const res=await fetch(GAS_ENDPOINT+'?'+usp.toString());
+    const json=await res.json();
+    if(!json.ok)throw new Error(json.message||'Ошибка');
+    return json.data;
   }
-
-  function setBtnLoading(btn, on) {
-    if (!btn) return;
-    const spinner = btn.querySelector('.btn-spinner');
-    if (on) {
-      btn.classList.add('btn-loading');
-      btn.disabled = true;
-      if (spinner) spinner.classList.remove('hidden');
-    } else {
-      btn.classList.remove('btn-loading');
-      btn.disabled = false;
-      if (spinner) spinner.classList.add('hidden');
-    }
-  }
-
-  async function apiGet(action, params) {
-    const usp = new URLSearchParams(Object.assign({ action }, params || {}));
-    const res = await fetch(GAS_ENDPOINT + '?' + usp.toString());
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.message || 'Ошибка');
+  async function apiPost(body){
+    const res=await fetch(GAS_ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+    const json=await res.json();
+    if(!json.ok)throw new Error(json.message||'Ошибка');
     return json.data;
   }
 
-  async function apiPost(body) {
-    const res = await fetch(GAS_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+  function fillRefs(refs){
+    state.refs=refs||{stocks:[],dict:{}};
+    const wh=document.getElementById('warehouse');
+    wh.innerHTML='';
+    (state.refs.stocks||[]).forEach(name=>{
+      const o=document.createElement('option');
+      o.value=name;o.textContent=name;wh.appendChild(o);
     });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.message || 'Ошибка');
-    return json.data;
-  }
-
-  // ===== Справочники =====
-  function fillRefs(refs) {
-    state.refs = refs || { stocks: [], dict: {} };
-
-    const wh = document.getElementById('warehouse');
-    wh.innerHTML = '';
-    (state.refs.stocks || []).forEach(name => {
-      const o = document.createElement('option');
-      o.value = name;
-      o.textContent = name;
-      wh.appendChild(o);
-    });
-
-    let dl = document.getElementById('art-list');
-    if (!dl) {
-      dl = document.createElement('datalist');
-      dl.id = 'art-list';
-      document.body.appendChild(dl);
-    }
-    dl.innerHTML = '';
-    Object.keys(state.refs.dict || {}).forEach(art => {
-      const o = document.createElement('option');
-      o.value = art;
-      dl.appendChild(o);
+    let dl=document.getElementById('art-list');
+    if(!dl){dl=document.createElement('datalist');dl.id='art-list';document.body.appendChild(dl);}
+    dl.innerHTML='';
+    Object.keys(state.refs.dict||{}).forEach(art=>{
+      const o=document.createElement('option');
+      o.value=art;dl.appendChild(o);
     });
   }
 
-  // ===== Сборный короб: helpers =====
-  function addMixItem(block, item) {
-    const wrap = block.querySelector('.mix-items');
-    const line = document.createElement('div');
-    line.className = 'mix-item';
-    line.innerHTML =
-      '<input class="mix-art flex-1 border rounded text-[9px]" list="art-list" placeholder="Артикул" value="' +
-      ((item && item.article) || '') +
-      '">' +
-      '<input class="mix-qty w-16 border rounded text-[9px]" type="number" min="1" placeholder="Кол-во" value="' +
-      ((item && item.qty) || '') +
-      '">' +
+  function addMixItem(block,item){
+    const wrap=block.querySelector('.mix-items');
+    const line=document.createElement('div');
+    line.className='mix-item';
+    line.innerHTML=
+      '<input class="mix-art flex-1 border rounded text-[9px]" list="art-list" placeholder="Артикул" value="'+((item&&item.article)||'')+'">'+
+      '<input class="mix-qty w-16 border rounded text-[9px]" type="number" min="1" placeholder="Кол-во" value="'+((item&&item.qty)||'')+'">'+
       '<button type="button" class="mix-del text-[9px] text-slate-500">×</button>';
-
-    line.querySelector('.mix-del').onclick = () => line.remove();
+    line.querySelector('.mix-del').onclick=()=>line.remove();
     wrap.appendChild(line);
   }
-
-  function createMixBlock(row, mixItems) {
-    if (row._mixBlock) {
-      row._mixBlock.remove();
-      row._mixBlock = null;
-    }
-
-    const block = document.createElement('div');
-    block.className = 'mix-block';
-    block.innerHTML =
-      '<div class="flex items-center justify-between mb-1">' +
-      '<div class="mix-title">Состав сборного короба</div>' +
-      '<button type="button" class="mix-add px-2 py-0.5 border rounded text-[9px]">+ Артикул</button>' +
-      '</div>' +
-      '<div class="mix-items"></div>' +
+  function createMixBlock(row,mixItems){
+    if(row._mixBlock){row._mixBlock.remove();row._mixBlock=null;}
+    const block=document.createElement('div');
+    block.className='mix-block';
+    block.innerHTML=
+      '<div class="flex items-center justify-between mb-1">'+
+      '<div class="mix-title">Состав сборного короба</div>'+
+      '<button type="button" class="mix-add px-2 py-0.5 border rounded text-[9px]">+ Артикул</button>'+
+      '</div>'+
+      '<div class="mix-items"></div>'+
       '<div class="mix-hint">Внешний артикул/баркод строки — для учёта. Ниже фиксируем вложенные.</div>';
-
-    const addBtn = block.querySelector('.mix-add');
-    addBtn.onclick = () => addMixItem(block);
-
-    if (mixItems && mixItems.length) {
-      mixItems.forEach(mi => addMixItem(block, mi));
-    } else {
-      addMixItem(block);
-    }
-
-    row.insertAdjacentElement('afterend', block);
-    row._mixBlock = block;
+    block.querySelector('.mix-add').onclick=()=>addMixItem(block);
+    if(mixItems&&mixItems.length)mixItems.forEach(mi=>addMixItem(block,mi));
+    else addMixItem(block);
+    row.insertAdjacentElement('afterend',block);
+    row._mixBlock=block;
   }
 
-  // ===== Автозаполнение стартовых ШК (сквозняком) =====
-  function recalcStartCodes() {
-    const rows = Array.from(document.querySelectorAll('#items .row'));
-    if (!rows.length) return;
-
-    let currentStart = null;
-    let currentBoxes = 0;
-
-    rows.forEach((row, index) => {
-      const sInput = row.querySelector('.s');
-      const bInput = row.querySelector('.b');
-
-      let startVal = parseInt((sInput.value || '').trim(), 10);
-      const boxesVal = parseInt((bInput.value || '').trim(), 10);
-
-      if (index === 0) {
-        if (Number.isFinite(startVal)) {
-          currentStart = startVal;
-          currentBoxes = Number.isFinite(boxesVal) && boxesVal > 0 ? boxesVal : 0;
-        } else {
-          currentStart = null;
-          currentBoxes = 0;
-        }
+  function recalcStartCodes(){
+    const rows=Array.from(document.querySelectorAll('#items .row'));
+    if(!rows.length)return;
+    let currentStart=null,currentBoxes=0;
+    rows.forEach((row,index)=>{
+      const sInput=row.querySelector('.s');
+      const bInput=row.querySelector('.b');
+      let startVal=parseInt((sInput.value||'').trim(),10);
+      const boxesVal=parseInt((bInput.value||'').trim(),10);
+      if(index===0){
+        if(Number.isFinite(startVal)){
+          currentStart=startVal;
+          currentBoxes=Number.isFinite(boxesVal)&&boxesVal>0?boxesVal:0;
+        }else{currentStart=null;currentBoxes=0;}
         return;
       }
-
-      if (currentStart !== null && currentBoxes > 0) {
-        const expected = currentStart + currentBoxes;
-        if (!Number.isFinite(startVal)) {
-          sInput.value = expected;
-          startVal = expected;
-        }
+      if(currentStart!==null&&currentBoxes>0){
+        const expected=currentStart+currentBoxes;
+        if(!Number.isFinite(startVal)){sInput.value=expected;startVal=expected;}
       }
-
-      if (Number.isFinite(startVal)) {
-        currentStart = startVal;
-        currentBoxes = Number.isFinite(boxesVal) && boxesVal > 0 ? boxesVal : 0;
-      } else {
-        currentStart = null;
-        currentBoxes = 0;
-      }
+      if(Number.isFinite(startVal)){
+        currentStart=startVal;
+        currentBoxes=Number.isFinite(boxesVal)&&boxesVal>0?boxesVal:0;
+      }else{currentStart=null;currentBoxes=0;}
     });
   }
 
-  // ===== Позиции =====
-  function addItemRow(item) {
-    const data = item || {};
-    const wrap = document.getElementById('items');
-
-    const row = document.createElement('div');
-    row.className = 'row items-center';
-    row.innerHTML =
-      '<input class="art w-full border rounded p-2 text-xs" list="art-list" placeholder="Артикул" value="' +
-      (data.article || '') +
-      '">' +
-      '<input class="bar w-full border rounded p-2 text-xs" placeholder="Баркод" value="' +
-      (data.barcode || '') +
-      '">' +
-      '<input class="u w-full border rounded p-2 text-xs" type="number" min="0" placeholder="Ед. в кор." value="' +
-      (data.unitsPerBox || '') +
-      '">' +
-      '<input class="b w-full border rounded p-2 text-xs" type="number" min="0" placeholder="Коробок" value="' +
-      (data.boxes || '') +
-      '">' +
-      '<input class="s w-full border rounded p-2 text-xs" type="number" min="0" placeholder="Старт. ШК (цифры)" value="' +
-      (data.boxStartNumeric || '') +
-      '">' +
-      '<div class="flex items-center gap-1">' +
-      '<label class="mix-label"><input type="checkbox" class="mix"' +
-      (data.isMixed ? ' checked' : '') +
-      '>Сборный</label>' +
-      '<button type="button" class="del px-2 py-1 border rounded text-xs">×</button>' +
+  function addItemRow(item){
+    const data=item||{};
+    const wrap=document.getElementById('items');
+    const row=document.createElement('div');
+    row.className='row items-center';
+    row.innerHTML=
+      '<input class="art w-full border rounded p-2 text-xs" list="art-list" placeholder="Артикул" value="'+(data.article||'')+'">'+
+      '<input class="bar w-full border rounded p-2 text-xs" placeholder="Баркод" value="'+(data.barcode||'')+'">'+
+      '<input class="u w-full border rounded p-2 text-xs" type="number" min="0" placeholder="Ед. в кор." value="'+(data.unitsPerBox||'')+'">'+
+      '<input class="b w-full border rounded p-2 text-xs" type="number" min="0" placeholder="Коробок" value="'+(data.boxes||'')+'">'+
+      '<input class="s w-full border rounded p-2 text-xs" type="number" min="0" placeholder="Старт. ШК (цифры)" value="'+(data.boxStartNumeric||'')+'">'+
+      '<div class="flex items-center gap-1">'+
+      '<label class="mix-label"><input type="checkbox" class="mix"'+(data.isMixed?' checked':'')+'>Сборный</label>'+
+      '<button type="button" class="del px-2 py-1 border rounded text-xs">×</button>'+
       '</div>';
+    const artInput=row.querySelector('.art');
+    const barInput=row.querySelector('.bar');
+    const boxInput=row.querySelector('.b');
+    const startInput=row.querySelector('.s');
+    const delBtn=row.querySelector('.del');
+    const mixChk=row.querySelector('.mix');
 
-    const artInput = row.querySelector('.art');
-    const barInput = row.querySelector('.bar');
-    const boxInput = row.querySelector('.b');
-    const startInput = row.querySelector('.s');
-    const delBtn = row.querySelector('.del');
-    const mixChk = row.querySelector('.mix');
-
-    artInput.addEventListener('change', () => {
-      const v = artInput.value.trim();
-      if (v && state.refs && state.refs.dict && state.refs.dict[v] !== undefined) {
-        barInput.value = state.refs.dict[v] || '';
+    artInput.addEventListener('change',()=>{
+      const v=artInput.value.trim();
+      if(v&&state.refs&&state.refs.dict&&state.refs.dict[v]!==undefined){
+        barInput.value=state.refs.dict[v]||'';
       }
     });
-
-    delBtn.addEventListener('click', () => {
-      if (row._mixBlock) row._mixBlock.remove();
+    delBtn.addEventListener('click',()=>{
+      if(row._mixBlock)row._mixBlock.remove();
       row.remove();
       recalcStartCodes();
     });
-
-    startInput.addEventListener('change', recalcStartCodes);
-    boxInput.addEventListener('change', recalcStartCodes);
-
-    mixChk.addEventListener('change', () => {
-      if (mixChk.checked) {
-        createMixBlock(row, data.mixItems || []);
-      } else if (row._mixBlock) {
-        row._mixBlock.remove();
-        row._mixBlock = null;
-      }
+    startInput.addEventListener('change',recalcStartCodes);
+    boxInput.addEventListener('change',recalcStartCodes);
+    mixChk.addEventListener('change',()=>{
+      if(mixChk.checked)createMixBlock(row,data.mixItems||[]);
+      else if(row._mixBlock){row._mixBlock.remove();row._mixBlock=null;}
     });
-
     wrap.appendChild(row);
-
-    if (data.isMixed || (data.mixItems && data.mixItems.length)) {
-      mixChk.checked = true;
-      createMixBlock(row, data.mixItems || []);
+    if(data.isMixed||(data.mixItems&&data.mixItems.length)){
+      mixChk.checked=true;
+      createMixBlock(row,data.mixItems||[]);
     }
   }
 
-  document.getElementById('addItem').addEventListener('click', () => addItemRow());
+  document.getElementById('addItem').addEventListener('click',()=>addItemRow());
 
-  // ===== Формирование payload =====
-  function formToPayload() {
-    const rows = Array.from(document.querySelectorAll('#items .row'));
-    const items = rows.map(r => {
-      const mixChk = r.querySelector('.mix');
-      const isMixed = !!(mixChk && mixChk.checked);
-      const mixItems = [];
-
-      if (isMixed && r._mixBlock) {
-        r._mixBlock.querySelectorAll('.mix-item').forEach(mi => {
-          const a = mi.querySelector('.mix-art').value.trim();
-          const q = mi.querySelector('.mix-qty').value;
-          if (a && q) mixItems.push({ article: a, qty: q });
+  function formToPayload(){
+    const rows=Array.from(document.querySelectorAll('#items .row'));
+    const items=rows.map(r=>{
+      const mixChk=r.querySelector('.mix');
+      const isMixed=!!(mixChk&&mixChk.checked);
+      const mixItems=[];
+      if(isMixed&&r._mixBlock){
+        r._mixBlock.querySelectorAll('.mix-item').forEach(mi=>{
+          const a=mi.querySelector('.mix-art').value.trim();
+          const q=mi.querySelector('.mix-qty').value;
+          if(a&&q)mixItems.push({article:a,qty:q});
         });
       }
-
-      return {
-        article: r.querySelector('.art').value.trim(),
-        barcode: r.querySelector('.bar').value.trim(),
-        unitsPerBox: r.querySelector('.u').value,
-        boxes: r.querySelector('.b').value,
-        boxStartNumeric: r.querySelector('.s').value,
+      return{
+        article:r.querySelector('.art').value.trim(),
+        barcode:r.querySelector('.bar').value.trim(),
+        unitsPerBox:r.querySelector('.u').value,
+        boxes:r.querySelector('.b').value,
+        boxStartNumeric:r.querySelector('.s').value,
         isMixed,
         mixItems
       };
     });
-
-    return {
-      id: document.getElementById('id').value.trim(),
-      marketplace: document.getElementById('marketplace').value,
-      warehouse: document.getElementById('warehouse').value,
-      status: document.getElementById('status').value,
+    return{
+      id:document.getElementById('id').value.trim(),
+      marketplace:document.getElementById('marketplace').value,
+      warehouse:document.getElementById('warehouse').value,
+      status:document.getElementById('status').value,
       items,
-      supplyCode: document.getElementById('supplyCode').value.trim(),
-      supplyNumber: document.getElementById('supplyNumber').value.trim(),
-      weight: document.getElementById('weight').value,
-      volume: document.getElementById('volume').value,
-      ttn: document.getElementById('ttn').value.trim()
+      supplyCode:document.getElementById('supplyCode').value.trim(),
+      supplyNumber:document.getElementById('supplyNumber').value.trim(),
+      weight:document.getElementById('weight').value,
+      volume:document.getElementById('volume').value,
+      ttn:document.getElementById('ttn').value.trim()
     };
   }
 
-  function resetForm() {
+  function resetForm(){
     document.getElementById('ship-form').reset();
-    document.getElementById('id').value = '';
-    const holder = document.getElementById('items');
-    holder.innerHTML = '';
+    document.getElementById('id').value='';
+    const holder=document.getElementById('items');
+    holder.innerHTML='';
     addItemRow();
   }
+  document.getElementById('resetBtn').addEventListener('click',resetForm);
 
-  document.getElementById('resetBtn').addEventListener('click', resetForm);
-
-  document.getElementById('ship-form').addEventListener('submit', async e => {
+  document.getElementById('ship-form').addEventListener('submit',async e=>{
     e.preventDefault();
-    const btn = document.getElementById('saveBtn');
-    try {
-      setBtnLoading(btn, true);
-      showPageLoader(true);
-      const payload = formToPayload();
-      await apiPost({ op: 'upsert', payload });
+    const btn=document.getElementById('saveBtn');
+    try{
+      setBtnLoading(btn,true);showPageLoader(true);
+      const payload=formToPayload();
+      await apiPost({op:'upsert',payload});
       await reloadList(true);
       alert('Сохранено');
       resetForm();
-    } catch (err) {
-      alert('Ошибка: ' + err.message);
-    } finally {
-      setBtnLoading(btn, false);
-      showPageLoader(false);
-    }
+    }catch(err){alert('Ошибка: '+err.message);}
+    finally{setBtnLoading(btn,false);showPageLoader(false);}
   });
 
-  // ===== Индикация заполненности =====
-  function chip(label, ok, stage) {
-    let stClass = 'chip-stage-process';
-    if (stage === 'Собрано') stClass = 'chip-stage-packed';
-    else if (stage === 'В пути') stClass = 'chip-stage-inroute';
-
-    const icon = ok
-      ? '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0L3.3 10.9a1 1 0 1 1 1.4-1.4l3.1-3.1 6.9-6.9a1 1 0 0 1 1.4 0z"/></svg>'
-      : '<svg viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="3"/></svg>';
-
-    return '<span class="chip ' +
-      stClass +
-      ' ' +
-      (ok ? '' : 'dim') +
-      '">' +
-      icon +
-      label +
-      '</span>';
+  function chip(label,ok,stage){
+    let stClass='chip-stage-process';
+    if(stage==='Собрано')stClass='chip-stage-packed';
+    else if(stage==='В пути')stClass='chip-stage-inroute';
+    const icon=ok
+      ?'<svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0L3.3 10.9a1 1 0 1 1 1.4-1.4l3.1-3.1 6.9-6.9a1 1 0 0 1 1.4 0z"/></svg>'
+      :'<svg viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="3"/></svg>';
+    return'<span class="chip '+stClass+' '+(ok?'':'dim')+'">'+icon+label+'</span>';
   }
-
-  function indicatorsFromItems(items) {
-    if (!Array.isArray(items) || !items.length) return { chips: [], pct: 0 };
-    const all = fn => items.every(fn);
-    const arr = [
-      ['Арт/Баркод', all(it => it.article && it.barcode)],
-      ['Коробки', all(it => it.unitsPerBox && it.boxes)],
-      ['ШК короба', all(it => it.boxStartNumeric || (it.boxCodes && it.boxCodes.length))]
+  function indicatorsFromItems(items){
+    if(!Array.isArray(items)||!items.length)return{chips:[],pct:0};
+    const all=fn=>items.every(fn);
+    const arr=[
+      ['Арт/Баркод',all(it=>it.article&&it.barcode)],
+      ['Коробки',all(it=>it.unitsPerBox&&it.boxes)],
+      ['ШК короба',all(it=>it.boxStartNumeric||(it.boxCodes&&it.boxCodes.length))]
     ];
-    const pct = Math.round((arr.filter(x => x[1]).length / arr.length) * 100);
-    return { chips: arr, pct };
+    const pct=Math.round(arr.filter(x=>x[1]).length/arr.length*100);
+    return{chips:arr,pct};
+  }
+  async function setArchived(id,flag){
+    await apiPost({op:'setArchived',id,archived:!!flag});
   }
 
-  async function setArchived(id, flag) {
-    await apiPost({ op: 'setArchived', id, archived: !!flag });
+  function closeDetails(){
+    const panel=document.getElementById('detailsPanel');
+    panel.classList.add('hidden');panel.innerHTML='';
+    document.querySelectorAll('#cards .card').forEach(c=>c.classList.remove('card-selected'));
   }
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetails();});
 
-  // ===== Панель деталей =====
-  function closeDetails() {
-    const panel = document.getElementById('detailsPanel');
-    panel.classList.add('hidden');
-    panel.innerHTML = '';
-    document.querySelectorAll('#cards .card').forEach(c => c.classList.remove('card-selected'));
-  }
+  function openDetails(item,cardEl){
+    const panel=document.getElementById('detailsPanel');
+    document.querySelectorAll('#cards .card').forEach(c=>c.classList.remove('card-selected'));
+    cardEl&&cardEl.classList.add('card-selected');
 
-  function openDetails(item, cardEl) {
-    const panel = document.getElementById('detailsPanel');
+    const ind=indicatorsFromItems(item.items||[]);
+    const listItems=(item.items||[]).map(it=>{
+      let line=(it.article||'-')+' / '+(it.barcode||'-')+' — '+(it.unitsPerBox||'-')+' ед × '+(it.boxes||'-')+' кор.';
+      if(it.isMixed&&it.mixItems&&it.mixItems.length){
+        const inner=it.mixItems.map(mi=>mi.article+' x'+mi.qty).join(', ');
+        line+=' (сборный: '+inner+')';
+      }
+      return'<li>'+line+'</li>';
+    }).join('');
 
-    document.querySelectorAll('#cards .card').forEach(c => c.classList.remove('card-selected'));
-    if (cardEl) cardEl.classList.add('card-selected');
+    panel.innerHTML='';
+    const closeBtn=document.createElement('button');
+    closeBtn.className='absolute top-2 right-3 text-slate-400 hover:text-slate-700 text-lg';
+    closeBtn.innerHTML='×';closeBtn.onclick=closeDetails;
 
-    const ind = indicatorsFromItems(item.items || []);
-    const listItems = (item.items || [])
-      .map(it => {
-        let line =
-          (it.article || '-') +
-          ' / ' +
-          (it.barcode || '-') +
-          ' — ' +
-          (it.unitsPerBox || '-') +
-          ' ед × ' +
-          (it.boxes || '-') +
-          ' кор.';
-        if (it.isMixed && it.mixItems && it.mixItems.length) {
-          const inner = it.mixItems
-            .map(mi => mi.article + ' x' + mi.qty)
-            .join(', ');
-          line += ' (сборный: ' + inner + ')';
-        }
-        return '<li>' + line + '</li>';
-      })
-      .join('');
+    const head=document.createElement('div');
+    head.className='mb-2';
+    head.innerHTML=
+      '<div class="text-xs font-semibold mb-0.5">'+(item.marketplace||'')+(item.warehouse?' · '+item.warehouse:'')+'</div>'+
+      '<div class="text-[10px] text-slate-600 mb-0.5">№ поставки: '+(item.supplyNumber||'-')+'</div>'+
+      '<div class="text-[10px] text-slate-600 mb-0.5">ШК поставки: '+(item.supplyCode||'-')+'</div>'+
+      '<div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] border '+
+      (item.status==='В пути'
+        ?'border-emerald-500 text-emerald-700 bg-emerald-50'
+        :item.status==='Собрано'
+          ?'border-amber-400 text-amber-700 bg-amber-50'
+          :'border-slate-300 text-slate-700 bg-slate-50')+
+      '">Статус: '+(item.status||'-')+'</div>';
 
-    panel.innerHTML = '';
+    const chipsDiv=document.createElement('div');
+    chipsDiv.className='mt-2 flex flex-wrap gap-1';
+    chipsDiv.innerHTML=ind.chips.map(([l,ok])=>chip(l,ok,item.status)).join('');
 
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'absolute top-2 right-3 text-slate-400 hover:text-slate-700 text-lg';
-    closeBtn.innerHTML = '×';
-    closeBtn.onclick = closeDetails;
+    const prog=document.createElement('div');
+    prog.className='mt-2 progress';
+    prog.innerHTML='<span style="width:'+ind.pct+'%"></span>';
 
-    const head = document.createElement('div');
-    head.className = 'mb-2';
-    head.innerHTML =
-      '<div class="text-xs font-semibold mb-0.5">' +
-      (item.marketplace || '') +
-      (item.warehouse ? ' · ' + item.warehouse : '') +
-      '</div>' +
-      '<div class="text-[10px] text-slate-600 mb-0.5">№ поставки: ' +
-      (item.supplyNumber || '-') +
-      '</div>' +
-      '<div class="text-[10px] text-slate-600 mb-0.5">ШК поставки: ' +
-      (item.supplyCode || '-') +
-      '</div>' +
-      '<div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] border ' +
-      (item.status === 'В пути'
-        ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
-        : item.status === 'Собрано'
-        ? 'border-amber-400 text-amber-700 bg-amber-50'
-        : 'border-slate-300 text-slate-700 bg-slate-50') +
-      '">Статус: ' +
-      (item.status || '-') +
-      '</div>';
-
-    const chipsDiv = document.createElement('div');
-    chipsDiv.className = 'mt-2 flex flex-wrap gap-1';
-    chipsDiv.innerHTML = ind.chips.map(([l, ok]) => chip(l, ok, item.status)).join('');
-
-    const prog = document.createElement('div');
-    prog.className = 'mt-2 progress';
-    prog.innerHTML = '<span style="width:' + ind.pct + '%"></span>';
-
-    const body = document.createElement('div');
-    body.className = 'mt-2 text-xs space-y-1';
-    body.innerHTML =
-      '<div><span class="text-slate-500">Склад:</span> ' +
-      (item.warehouse || '-') +
-      '</div>' +
-      '<div><span class="text-slate-500">Вес / Объём:</span> ' +
-      (item.weight || '-') +
-      ' кг / ' +
-      (item.volume || '-') +
-      ' м³</div>' +
-      '<div><span class="text-slate-500">ТТН / Отправлен:</span> ' +
-      (item.ttn || '-') +
-      ' / ' +
-      (item.shipped || '-') +
-      '</div>' +
-      '<div><span class="text-slate-500">Создано:</span> ' +
-      (item.created || '-') +
-      '</div>' +
-      '<div><span class="text-slate-500">Позиции:</span> ' +
-      ((item.items && item.items.length) || 0) +
-      '</div>' +
-      (listItems
-        ? '<ul class="list-disc pl-4 space-y-0.5">' + listItems + '</ul>'
-        : '<div class="text-[10px] text-slate-500">Позиции не указаны</div>') +
-      '<div class="text-[9px] text-slate-400">ID: ' +
-      (item.id || '-') +
-      '</div>' +
-      (item.archived
-        ? '<div class="text-[10px] font-semibold text-rose-600">В архиве</div>'
-        : '');
-
-    const btns = document.createElement('div');
-    btns.className = 'flex flex-wrap gap-2 mt-3';
-
-    const bEdit = document.createElement('button');
-    bEdit.className = 'px-3 py-1 rounded border text-xs bg-white';
-    bEdit.textContent = 'Редактировать';
-    bEdit.onclick = () => {
-      document.getElementById('id').value = item.id;
-      document.getElementById('marketplace').value = item.marketplace || 'WB';
-      document.getElementById('warehouse').value = item.warehouse || '';
-      document.getElementById('status').value = item.status || 'В процессе';
-      document.getElementById('supplyCode').value = item.supplyCode || '';
-      document.getElementById('supplyNumber').value = item.supplyNumber || '';
-      document.getElementById('weight').value = item.weight || '';
-      document.getElementById('volume').value = item.volume || '';
-      document.getElementById('ttn').value = item.ttn || '';
-
-      const holder = document.getElementById('items');
-      holder.innerHTML = '';
-      (item.items && item.items.length ? item.items : [{}]).forEach(it =>
-        addItemRow(it)
+    const body=document.createElement('div');
+    body.className='mt-2 text-xs space-y-1';
+    body.innerHTML=
+      '<div><span class="text-slate-500">Склад:</span> '+(item.warehouse||'-')+'</div>'+
+      '<div><span class="text-slate-500">Вес / Объём:</span> '+(item.weight||'-')+' кг / '+(item.volume||'-')+' м³</div>'+
+      '<div><span class="text-slate-500">ТТН / Отправлен:</span> '+(item.ttn||'-')+' / '+(item.shipped||'-')+'</div>'+
+      '<div><span class="text-slate-500">Создано:</span> '+(item.created||'-')+'</div>'+
+      '<div><span class="text-slate-500">Позиции:</span> '+((item.items&&item.items.length)||0)+'</div>'+
+      (listItems?'<ul class="list-disc pl-4 space-y-0.5">'+listItems+'</ul>':'<div class="text-[10px] text-slate-500">Позиции не указаны</div>')+
+      '<div class="text-[9px] text-slate-400">ID: '+(item.id||'-')+'</div>'+
+      (item.archived?'<div class="text-[10px] font-semibold text-rose-600">В архиве</div>':''
       );
 
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    const btns=document.createElement('div');
+    btns.className='flex flex-wrap gap-2 mt-3';
+
+    const bEdit=document.createElement('button');
+    bEdit.className='px-3 py-1 rounded border text-xs bg-white';
+    bEdit.textContent='Редактировать';
+    bEdit.onclick=()=>{
+      document.getElementById('id').value=item.id;
+      document.getElementById('marketplace').value=item.marketplace||'WB';
+      document.getElementById('warehouse').value=item.warehouse||'';
+      document.getElementById('status').value=item.status||'В процессе';
+      document.getElementById('supplyCode').value=item.supplyCode||'';
+      document.getElementById('supplyNumber').value=item.supplyNumber||'';
+      document.getElementById('weight').value=item.weight||'';
+      document.getElementById('volume').value=item.volume||'';
+      document.getElementById('ttn').value=item.ttn||'';
+      const holder=document.getElementById('items');
+      holder.innerHTML='';
+      (item.items&&item.items.length?item.items:[{}]).forEach(it=>addItemRow(it));
+      window.scrollTo({top:0,behavior:'smooth'});
       closeDetails();
     };
 
-    const bShip = document.createElement('button');
-    bShip.className =
-      'relative px-3 py-1 rounded bg-emerald-600 text-white text-xs';
-    bShip.innerHTML =
-      '<span class="btn-text">Отправлен</span><span class="btn-spinner spinner hidden"></span>';
-    bShip.onclick = async () => {
-      if (!confirm('Отметить поставку как отправленную?')) return;
-      const ttn = prompt(
-        'Введите/уточните номер ТТН (можно оставить пустым):',
-        item.ttn || ''
-      );
-      try {
-        setBtnLoading(bShip, true);
-        showPageLoader(true);
-        await apiPost({
-          op: 'markShipped',
-          id: item.id,
-          ttn: ttn || ''
-        });
-        await reloadList(true);
-        closeDetails();
-      } catch (err) {
-        alert('Ошибка: ' + err.message);
-      } finally {
-        setBtnLoading(bShip, false);
-        showPageLoader(false);
-      }
+    const bShip=document.createElement('button');
+    bShip.className='relative px-3 py-1 rounded bg-emerald-600 text-white text-xs';
+    bShip.innerHTML='<span class="btn-text">Отправлен</span><span class="btn-spinner spinner hidden"></span>';
+    bShip.onclick=async()=>{
+      if(!confirm('Отметить поставку как отправленную?'))return;
+      const ttn=prompt('Введите/уточните номер ТТН (можно оставить пустым):',item.ttn||'');
+      try{
+        setBtnLoading(bShip,true);showPageLoader(true);
+        await apiPost({op:'markShipped',id:item.id,ttn:ttn||''});
+        await reloadList(true);closeDetails();
+      }catch(err){alert('Ошибка: '+err.message);}
+      finally{setBtnLoading(bShip,false);showPageLoader(false);}
     };
 
-    btns.appendChild(bEdit);
-    btns.appendChild(bShip);
+    btns.appendChild(bEdit);btns.appendChild(bShip);
 
-    if (!item.archived) {
-      const bArch = document.createElement('button');
-      bArch.className =
-        'px-3 py-1 rounded border border-slate-300 text-slate-500 text-xs bg-white';
-      bArch.textContent = 'В архив';
-      bArch.onclick = async () => {
-        if (!confirm('Отправить поставку в архив?')) return;
-        try {
-          showPageLoader(true);
-          await setArchived(item.id, true);
-          await reloadList(true);
-          closeDetails();
-        } catch (err) {
-          alert('Ошибка: ' + err.message);
-        } finally {
-          showPageLoader(false);
-        }
+    if(!item.archived){
+      const bArch=document.createElement('button');
+      bArch.className='px-3 py-1 rounded border border-slate-300 text-slate-500 text-xs bg-white';
+      bArch.textContent='В архив';
+      bArch.onclick=async()=>{
+        if(!confirm('Отправить поставку в архив?'))return;
+        try{
+          showPageLoader(true);await setArchived(item.id,true);await reloadList(true);closeDetails();
+        }catch(err){alert('Ошибка: '+err.message);}
+        finally{showPageLoader(false);}
       };
       btns.appendChild(bArch);
-    } else {
-      const bUn = document.createElement('button');
-      bUn.className =
-        'px-3 py-1 rounded border border-amber-500 text-amber-600 text-xs bg-white';
-      bUn.textContent = 'Вернуть';
-      bUn.onclick = async () => {
-        try {
-          showPageLoader(true);
-          await setArchived(item.id, false);
-          await reloadList(true);
-          closeDetails();
-        } catch (err) {
-          alert('Ошибка: ' + err.message);
-        } finally {
-          showPageLoader(false);
-        }
+    }else{
+      const bUn=document.createElement('button');
+      bUn.className='px-3 py-1 rounded border border-amber-500 text-amber-600 text-xs bg-white';
+      bUn.textContent='Вернуть';
+      bUn.onclick=async()=>{
+        try{
+          showPageLoader(true);await setArchived(item.id,false);await reloadList(true);closeDetails();
+        }catch(err){alert('Ошибка: '+err.message);}
+        finally{showPageLoader(false);}
       };
       btns.appendChild(bUn);
     }
@@ -888,165 +692,118 @@
     panel.appendChild(prog);
     panel.appendChild(body);
     panel.appendChild(btns);
-
     panel.classList.remove('hidden');
   }
 
-  // Закрытие панели по клику вне (по фону снизу не будем, только крестик / ESC)
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeDetails();
-  });
-
-  // ===== Рендер карточек (мини) =====
-  function renderSkeleton(n) {
-    const wrap = document.getElementById('cards');
-    wrap.innerHTML = '';
-    const count = n || 12;
-    for (let i = 0; i < count; i++) {
-      const d = document.createElement('div');
-      d.className = 'card rounded-xl p-3 skeleton';
-      d.style.height = '64px';
+  function renderSkeleton(n){
+    const wrap=document.getElementById('cards');
+    wrap.innerHTML='';
+    const count=n||12;
+    for(let i=0;i<count;i++){
+      const d=document.createElement('div');
+      d.className='card rounded-xl p-3 skeleton';
+      d.style.height='64px';
       wrap.appendChild(d);
     }
   }
 
-  function renderCards() {
-    const wrap = document.getElementById('cards');
-    wrap.innerHTML = '';
+  function renderCards(){
+    const wrap=document.getElementById('cards');
+    wrap.innerHTML='';
     closeDetails();
-
-    state.filtered.forEach(item => {
-      const ind = indicatorsFromItems(item.items || []);
-      const headerSupply = item.supplyNumber || '-';
-      const card = document.createElement('div');
-      card.className =
-        'card rounded-xl px-3 py-2 flex flex-col justify-between ' +
-        mpClass(item.marketplace) +
-        ' ' +
-        stageClass(item.status) +
-        (item.archived ? ' opacity-70' : '');
-
-      const top = document.createElement('div');
-      top.className = 'flex items-center gap-1';
-      top.innerHTML =
-        '<div class="flex-1">' +
-        '<div class="text-[10px] font-semibold truncate">' +
-        (item.marketplace || '') +
-        (item.warehouse ? ' · ' + item.warehouse : '') +
-        '</div>' +
-        '<div class="text-[9px] text-slate-700">№ ' +
-        headerSupply +
-        '</div>' +
-        '</div>';
-
-      const statusLabel = document.createElement('div');
-      statusLabel.className =
-        'px-2 py-0.5 rounded-full text-[8px] whitespace-nowrap border ' +
-        (item.status === 'В пути'
-          ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
-          : item.status === 'Собрано'
-          ? 'border-amber-400 text-amber-700 bg-amber-50'
-          : 'border-slate-300 text-slate-700 bg-slate-50');
-      statusLabel.textContent = item.status || '-';
-
-      const chev = document.createElement('div');
-      chev.innerHTML =
+    state.filtered.forEach(item=>{
+      const ind=indicatorsFromItems(item.items||[]);
+      const headerSupply=item.supplyNumber||'-';
+      const card=document.createElement('div');
+      card.className='card rounded-xl px-3 py-2 flex flex-col justify-between '+
+        mpClass(item.marketplace)+' '+stageClass(item.status)+(item.archived?' opacity-70':'');
+      const top=document.createElement('div');
+      top.className='flex items-center gap-1 min-w-0';       // min-w-0 важно
+      const title=document.createElement('div');
+      title.className='flex-1 min-w-0';
+      title.innerHTML=
+        '<div class="text-[10px] font-semibold truncate">'+
+        (item.marketplace||'')+(item.warehouse?' · '+item.warehouse:'')+
+        '</div>'+
+        '<div class="text-[9px] text-slate-700 truncate">№ '+headerSupply+'</div>';
+      const statusLabel=document.createElement('div');
+      statusLabel.className=
+        'px-2 py-0.5 rounded-full text-[8px] whitespace-nowrap border shrink-0 '+
+        (item.status==='В пути'
+          ?'border-emerald-500 text-emerald-700 bg-emerald-50'
+          :item.status==='Собрано'
+            ?'border-amber-400 text-amber-700 bg-amber-50'
+            :'border-slate-300 text-slate-700 bg-slate-50');
+      statusLabel.textContent=item.status||'-';
+      const chev=document.createElement('div');
+      chev.innerHTML=
         '<svg class="chevron" viewBox="0 0 20 20" fill="none"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+      top.appendChild(title);
       top.appendChild(statusLabel);
       top.appendChild(chev);
 
-      const prog = document.createElement('div');
-      prog.className = 'mt-1 progress';
-      prog.innerHTML = '<span style="width:' + ind.pct + '%"></span>';
+      const prog=document.createElement('div');
+      prog.className='mt-1 progress';
+      prog.innerHTML='<span style="width:'+ind.pct+'%"></span>';
 
       card.appendChild(top);
       card.appendChild(prog);
-
-      card.addEventListener('click', () => {
-        openDetails(item, card);
-      });
+      card.addEventListener('click',()=>openDetails(item,card));
 
       wrap.appendChild(card);
     });
   }
 
-  // ===== Фильтры и список =====
-  function applyFilters() {
-    const mp = document.getElementById('f-market').value;
-    const st = document.getElementById('f-stage').value;
-    const q = document.getElementById('f-q').value.trim().toLowerCase();
-
-    state.filtered = (state.list || []).filter(item => {
-      if (state.scope === 'active' && item.archived) return false;
-      if (state.scope === 'archived' && !item.archived) return false;
-      if (mp && item.marketplace !== mp) return false;
-      if (st && item.status !== st) return false;
-
-      if (q) {
-        const hay = (
-          (item.warehouse || '') +
-          ' ' +
-          (item.ttn || '') +
-          ' ' +
-          (item.supplyCode || '') +
-          ' ' +
-          (item.supplyNumber || '') +
-          ' ' +
-          (item.items || [])
-            .map(it => (it.article || '') + ' ' + (it.barcode || ''))
-            .join(' ')
+  function applyFilters(){
+    const mp=document.getElementById('f-market').value;
+    const st=document.getElementById('f-stage').value;
+    const q=document.getElementById('f-q').value.trim().toLowerCase();
+    state.filtered=(state.list||[]).filter(item=>{
+      if(state.scope==='active'&&item.archived)return false;
+      if(state.scope==='archived'&&!item.archived)return false;
+      if(mp&&item.marketplace!==mp)return false;
+      if(st&&item.status!==st)return false;
+      if(q){
+        const hay=(
+          (item.warehouse||'')+' '+(item.ttn||'')+' '+(item.supplyCode||'')+' '+(item.supplyNumber||'')+' '+
+          (item.items||[]).map(it=>(it.article||'')+' '+(it.barcode||'')).join(' ')
         ).toLowerCase();
-        if (!hay.includes(q)) return false;
+        if(!hay.includes(q))return false;
       }
-
       return true;
     });
-
     renderCards();
   }
 
-  async function reloadList(force) {
-    renderSkeleton(12);
-    showPageLoader(true);
-    try {
-      const data = await apiGet('list', force ? { _ts: Date.now() } : null);
-      state.list = data || [];
-      applyFilters();
-    } catch (err) {
-      alert('Ошибка загрузки списка: ' + err.message);
-    } finally {
-      showPageLoader(false);
-    }
+  async function reloadList(force){
+    renderSkeleton(12);showPageLoader(true);
+    try{
+      const data=await apiGet('list',force?{_ts:Date.now()}:null);
+      state.list=data||[];applyFilters();
+    }catch(err){alert('Ошибка загрузки списка: '+err.message);}
+    finally{showPageLoader(false);}
   }
 
-  async function boot() {
-    try {
+  async function boot(){
+    try{
       showPageLoader(true);
-      const refs = await apiGet('refs');
+      const refs=await apiGet('refs');
       fillRefs(refs);
       resetForm();
       await reloadList(true);
-    } catch (err) {
-      alert('Ошибка инициализации: ' + err.message);
-    } finally {
-      showPageLoader(false);
-    }
+    }catch(err){alert('Ошибка инициализации: '+err.message);}
+    finally{showPageLoader(false);}
   }
 
-  // события фильтров
-  ['f-market', 'f-stage', 'f-q'].forEach(id => {
-    document.getElementById(id).addEventListener('input', applyFilters);
+  ['f-market','f-stage','f-q'].forEach(id=>{
+    document.getElementById(id).addEventListener('input',applyFilters);
   });
-
-  // вкладки
-  document.querySelectorAll('.scope-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document
-        .querySelectorAll('.scope-btn')
-        .forEach(b => b.classList.remove('scope-active'));
+  document.querySelectorAll('.scope-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.scope-btn').forEach(b=>b.classList.remove('scope-active'));
       btn.classList.add('scope-active');
-      state.scope = btn.dataset.scope || 'active';
+      state.scope=btn.dataset.scope||'active';
       applyFilters();
     });
   });
